@@ -854,7 +854,7 @@ async function batchDownload() {
     const songs = getSelectedSongs();
     if (songs.length === 0) return;
     if (webSettings.downloadToLocal) {
-        if (!confirm(`鍑嗗灏?${songs.length} 棣栨瓕鏇蹭繚瀛樺埌鏈湴鐩綍锛?${webSettings.downloadDir}`)) {
+        if (!confirm(`准备将 ${songs.length} 首歌曲保存到本地目录：\n${webSettings.downloadDir}`)) {
             return;
         }
 
@@ -872,13 +872,13 @@ async function batchDownload() {
         }
 
         if (success === songs.length) {
-            let message = `宸蹭繚瀛? ${success} 棣栨瓕鏇插埌:\n${webSettings.downloadDir}`;
+            let message = `已保存 ${success} 首歌曲到：\n${webSettings.downloadDir}`;
             if (warningCount > 0) {
-                message += `\n\n鍏? ${warningCount} 棣栬Е鍙戜簡闄嶇骇鎻愮ず锛岃鏌ョ湅缁堢鏃ュ織`;
+                message += `\n\n共 ${warningCount} 首触发了降级提示，请查看终端日志`;
             }
             alert(message);
         } else {
-            alert(`鏈湴淇濆瓨瀹屾垚锛屾垚鍔? ${success}/${songs.length}`);
+            alert(`本地保存完成，成功 ${success}/${songs.length}`);
         }
         return;
     }

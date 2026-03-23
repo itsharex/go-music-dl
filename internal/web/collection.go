@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/guohuiyuan/go-music-dl/core"
 	"github.com/guohuiyuan/music-lib/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -15,13 +18,15 @@ import (
 
 var db *gorm.DB
 
+const legacyFavoritesDBFile = "data/favorites.db"
+
 // Collection 收藏夹模型 (自制歌单)
 type Collection struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	Name        string    `gorm:"not null" json:"name"`
-	Description string    `json:"description"`
-	Cover       string    `json:"cover"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          uint        `gorm:"primaryKey" json:"id"`
+	Name        string      `gorm:"not null" json:"name"`
+	Description string      `json:"description"`
+	Cover       string      `json:"cover"`
+	CreatedAt   time.Time   `json:"created_at"`
 	SavedSongs  []SavedSong `gorm:"constraint:OnDelete:CASCADE;" json:"-"`
 }
 
@@ -41,12 +46,13 @@ type SavedSong struct {
 
 // InitDB 初始化 GORM 与 SQLite
 func InitDB() {
-	// 确保持久化目录 data 存在
-	os.MkdirAll("data", 0755)
+	dbPath := filepath.Clean(core.ConfigDBPath())
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		panic("Failed to create SQLite directory: " + err.Error())
+	}
 
 	var err error
-	// 将数据库路径指向 data 目录
-	db, err = gorm.Open(sqlite.Open("data/favorites.db?_pragma=foreign_keys(1)"), &gorm.Config{})
+	db, err = gorm.Open(sqlite.Open(dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"), &gorm.Config{})
 	if err != nil {
 		panic("Failed to connect to SQLite: " + err.Error())
 	}
@@ -54,6 +60,10 @@ func InitDB() {
 	err = db.AutoMigrate(&Collection{}, &SavedSong{})
 	if err != nil {
 		panic("Failed to migrate database: " + err.Error())
+	}
+
+	if err := migrateLegacyFavorites(dbPath); err != nil {
+		panic("Failed to migrate legacy favorites database: " + err.Error())
 	}
 }
 
@@ -64,6 +74,110 @@ func CloseDB() {
 			sqlDB.Close()
 		}
 	}
+}
+
+func legacyFavoritesDBPath() string {
+	if path := strings.TrimSpace(os.Getenv("MUSIC_DL_FAVORITES_DB")); path != "" {
+		return path
+	}
+	return legacyFavoritesDBFile
+}
+
+func migrateLegacyFavorites(unifiedPath string) error {
+	legacyPath := filepath.Clean(legacyFavoritesDBPath())
+	if legacyPath == "" || legacyPath == filepath.Clean(unifiedPath) {
+		return nil
+	}
+
+	if _, err := os.Stat(legacyPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	var collectionCount int64
+	if err := db.Model(&Collection{}).Count(&collectionCount).Error; err != nil {
+		return err
+	}
+	if collectionCount > 0 {
+		return nil
+	}
+
+	legacyDB, err := gorm.Open(sqlite.Open(legacyPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"), &gorm.Config{})
+	if err != nil {
+		return err
+	}
+	sqlDB, err := legacyDB.DB()
+	if err != nil {
+		return err
+	}
+
+	if !legacyDB.Migrator().HasTable(&Collection{}) {
+		_ = sqlDB.Close()
+		return nil
+	}
+
+	var collections []Collection
+	if err := legacyDB.Order("id ASC").Find(&collections).Error; err != nil {
+		_ = sqlDB.Close()
+		return err
+	}
+
+	var savedSongs []SavedSong
+	if legacyDB.Migrator().HasTable(&SavedSong{}) {
+		if err := legacyDB.Order("id ASC").Find(&savedSongs).Error; err != nil {
+			_ = sqlDB.Close()
+			return err
+		}
+	}
+
+	if len(collections) == 0 && len(savedSongs) == 0 {
+		if err := sqlDB.Close(); err != nil {
+			return err
+		}
+		return removeLegacyFavoritesFiles(legacyPath)
+	}
+
+	if err := sqlDB.Close(); err != nil {
+		return err
+	}
+
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if len(collections) > 0 {
+			if err := tx.Create(&collections).Error; err != nil {
+				return err
+			}
+		}
+		if len(savedSongs) > 0 {
+			for i := range savedSongs {
+				savedSongs[i].ID = 0
+			}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&savedSongs).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return removeLegacyFavoritesFiles(legacyPath)
+}
+
+func removeLegacyFavoritesFiles(legacyPath string) error {
+	candidates := []string{
+		legacyPath,
+		legacyPath + "-shm",
+		legacyPath + "-wal",
+		legacyPath + "-journal",
+	}
+	for _, candidate := range candidates {
+		if err := os.Remove(candidate); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func RegisterCollectionRoutes(api *gin.RouterGroup) {

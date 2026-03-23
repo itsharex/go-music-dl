@@ -50,6 +50,11 @@ func configDBPath() string {
 	return ConfigDBFile
 }
 
+// ConfigDBPath returns the canonical SQLite file used by the app.
+func ConfigDBPath() string {
+	return configDBPath()
+}
+
 func legacyCookieFilePath() string {
 	if path := strings.TrimSpace(os.Getenv("MUSIC_DL_COOKIE_FILE")); path != "" {
 		return path
@@ -59,13 +64,13 @@ func legacyCookieFilePath() string {
 
 func ensureConfigDB() error {
 	configInit.Do(func() {
-		dbPath := filepath.Clean(configDBPath())
+		dbPath := filepath.Clean(ConfigDBPath())
 		if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 			configInitErr = err
 			return
 		}
 
-		db, err := gorm.Open(sqlite.Open(dbPath+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"), &gorm.Config{})
+		db, err := gorm.Open(sqlite.Open(dbPath+"?_pragma=busy_timeout(5000)"), &gorm.Config{})
 		if err != nil {
 			configInitErr = err
 			return

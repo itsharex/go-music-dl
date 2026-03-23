@@ -12,8 +12,5 @@ dist/
 nul
 video_output/
 data/video_output/
-favorites.db
-data/favorites.db
 data/settings.db
-data/settings.db-shm
-data/settings.db-wal
+data/

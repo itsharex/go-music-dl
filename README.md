@@ -332,7 +332,7 @@ go-music-dl/
 │   ├── downloads/         # 下载的音乐文件
 │   ├── video_output/      # 生成的视频文件
 │   ├── cookies.json       # Cookie 配置文件
-│   └── favorites.db       # 自制歌单 SQLite 数据库
+│   └── settings.db        # 统一 SQLite 数据库（设置 / Cookie / 自制歌单）
 ├── .github/workflows/     # GitHub Actions 工作流
 ├── screenshots/           # 截图资源
 ├── docker-compose.yml     # Docker 生产环境配置 (直接拉取镜像)
