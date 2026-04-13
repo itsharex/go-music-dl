@@ -64,20 +64,28 @@ changelog:
       - Merge remote-tracking
       - go mod tidy
 
+release:
+  mode: append
+  extra_files:
+    - glob: ./extra-release-assets/go-music-dl_darwin_*.dmg
+    - glob: ./extra-release-assets/go-music-dl_darwin_*.pkg
+
 archives:
   # Linux & macOS 打包格式 (tar.gz)
   - id: unix
-    builds:
+    ids:
       - unix
     name_template: "go-music-dl_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-    format: tar.gz
+    formats:
+      - tar.gz
 
   # Windows 打包格式 (zip)
   - id: win
-    builds:
+    ids:
       - win
     name_template: "go-music-dl_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-    format: zip
+    formats:
+      - zip
 
 nfpms:
   - license: AGPL 3.0

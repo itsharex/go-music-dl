@@ -10,8 +10,94 @@ permissions:
   contents: write
 
 jobs:
-  # 1. CLI release by GoReleaser
+  # 1. Build macOS CLI installer packages for GoReleaser extra files
+  build-cli-macos-packages:
+    name: Build CLI macOS packages (${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goarch: amd64
+          - runner: macos-14
+            goarch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build CLI (macOS)
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w" -o ./dist/music-dl ./cmd/music-dl
+        env:
+          CGO_ENABLED: 0
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+
+      - name: Verify CLI binary
+        run: |
+          test -x ./dist/music-dl
+          ./dist/music-dl --help > /dev/null
+
+      - name: Package CLI (macOS)
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [ -z "$version" ]; then
+            version="0.1.0"
+          fi
+
+          pkg_root="dist/pkgroot"
+          dmg_root="dist/dmg-root"
+
+          mkdir -p "${pkg_root}/usr/local/bin"
+          mkdir -p "${dmg_root}"
+
+          cp ./dist/music-dl "${pkg_root}/usr/local/bin/music-dl"
+          cp ./dist/music-dl "${dmg_root}/music-dl"
+          chmod +x "${pkg_root}/usr/local/bin/music-dl" "${dmg_root}/music-dl"
+
+          cat > "${dmg_root}/README.txt" <<'EOF'
+          Copy music-dl to a directory in your PATH, such as /usr/local/bin.
+          EOF
+
+          pkgbuild \
+            --root "${pkg_root}" \
+            --identifier com.guohuiyuan.go-music-dl.cli \
+            --version "${version}" \
+            --install-location / \
+            "go-music-dl_darwin_${{ matrix.goarch }}.pkg"
+
+          hdiutil create \
+            -volname "go-music-dl" \
+            -srcfolder "${dmg_root}" \
+            -ov \
+            -format UDZO \
+            "go-music-dl_darwin_${{ matrix.goarch }}.dmg"
+
+      - name: Verify CLI packages
+        run: |
+          test -f "go-music-dl_darwin_${{ matrix.goarch }}.pkg"
+          hdiutil verify "go-music-dl_darwin_${{ matrix.goarch }}.dmg"
+
+      - name: Upload CLI macOS packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-macos-packages-${{ matrix.goarch }}
+          path: |
+            go-music-dl_darwin_${{ matrix.goarch }}.dmg
+            go-music-dl_darwin_${{ matrix.goarch }}.pkg
+
+  # 2. CLI release by GoReleaser
   goreleaser:
+    needs:
+      - build-cli-macos-packages
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,6 +110,13 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: Download macOS CLI packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cli-macos-packages-*
+          path: extra-release-assets
+          merge-multiple: true
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
@@ -32,9 +125,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # 2. desktop_go release assets, named like .goreleaser.yml archives
+  # 3. desktop_go release assets, named like .goreleaser.yml archives
   build-desktop-go:
     name: Build desktop_go (${{ matrix.goos }}-${{ matrix.goarch }})
+    needs:
+      - goreleaser
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -78,7 +173,12 @@ jobs:
         if: matrix.goos == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev imagemagick libfuse2 rpm
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+
+      - name: Install macOS Packaging Tools
+        if: matrix.goos == 'darwin'
+        run: brew install create-dmg
 
       - name: Prepare Windows Resources
         if: matrix.goos == 'windows'
@@ -112,18 +212,67 @@ jobs:
       - name: Package desktop_go (Linux)
         if: matrix.goos == 'linux'
         run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [ -z "$version" ]; then
+            version="0.1.0"
+          fi
+
           package_root="music-dl-desktop-go_${{ matrix.goos }}_${{ matrix.goarch }}"
           mkdir -p "dist/${package_root}/usr/bin"
           mkdir -p "dist/${package_root}/usr/share/icons/hicolor/256x256/apps"
           mkdir -p "dist/${package_root}/usr/share/applications"
           cp "./dist/${{ matrix.binary_name }}" "dist/${package_root}/usr/bin/music-dl-desktop-go"
-          cp "./desktop/icon.png" "dist/${package_root}/usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png"
+          convert desktop/icon.png -resize 256x256! "dist/${package_root}/usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png"
           cp "./desktop_go/app.desktop" "dist/${package_root}/usr/share/applications/music-dl-desktop-go.desktop"
           tar -C dist -czf "${{ matrix.archive_name }}" "${package_root}"
+
+          cat > dist/nfpm.yaml <<EOF
+          name: music-dl-desktop-go
+          arch: ${{ matrix.goarch }}
+          platform: linux
+          version: ${version}
+          section: utils
+          priority: optional
+          maintainer: guohuiyuan
+          description: Go desktop build of go-music-dl
+          homepage: https://github.com/guohuiyuan/go-music-dl
+          license: AGPL-3.0
+          contents:
+            - src: ./dist/${{ matrix.binary_name }}
+              dst: /usr/bin/music-dl-desktop-go
+              file_info:
+                mode: 0755
+            - src: ./dist/${package_root}/usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png
+              dst: /usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png
+            - src: ./desktop_go/app.desktop
+              dst: /usr/share/applications/music-dl-desktop-go.desktop
+          EOF
+
+          "$(go env GOPATH)/bin/nfpm" package --config dist/nfpm.yaml --packager deb --target "music-dl-desktop-go-linux-${{ matrix.goarch }}.deb"
+          "$(go env GOPATH)/bin/nfpm" package --config dist/nfpm.yaml --packager rpm --target "music-dl-desktop-go-linux-${{ matrix.goarch }}.rpm"
+
+          rm -rf AppDir
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps/
+          mkdir -p AppDir/usr/share/applications/
+          cp "./dist/${{ matrix.binary_name }}" AppDir/usr/bin/music-dl-desktop-go
+          cp "dist/${package_root}/usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png" AppDir/usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png
+          cp "./desktop_go/app.desktop" AppDir/usr/share/applications/music-dl-desktop-go.desktop
+
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png --desktop-file AppDir/usr/share/applications/music-dl-desktop-go.desktop
+          appimage=$(find . -maxdepth 1 -type f -name '*.AppImage' ! -name 'linuxdeploy-x86_64.AppImage' | head -n 1)
+          mv "$appimage" "music-dl-desktop-go-linux-${{ matrix.goarch }}.AppImage"
 
       - name: Package desktop_go (macOS)
         if: matrix.goos == 'darwin'
         run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [ -z "$version" ]; then
+            version="0.1.0"
+          fi
+
           package_root="music-dl-desktop-go_${{ matrix.goos }}_${{ matrix.goarch }}"
           app_dir="dist/${package_root}/music-dl-desktop-go.app"
           mkdir -p "${app_dir}/Contents/MacOS"
@@ -171,6 +320,12 @@ jobs:
           codesign --force --deep --sign - "${app_dir}" || true
           tar -C dist -czf "${{ matrix.archive_name }}" "${package_root}"
 
+          rm -rf bundle
+          mkdir -p bundle/dmg-root
+          cp -R "${app_dir}" bundle/dmg-root/
+          create-dmg --volname "music-dl-desktop-go Installer" --window-pos 200 120 --window-size 800 400 --app-drop-link 600 185 "music-dl-desktop-go-macos-${{ matrix.goarch }}.dmg" "bundle/dmg-root"
+          productbuild --component "${app_dir}" /Applications "music-dl-desktop-go-macos-${{ matrix.goarch }}.pkg"
+
       - name: Package desktop_go (Windows)
         if: matrix.goos == 'windows'
         shell: powershell
@@ -182,12 +337,20 @@ jobs:
         run: |
           tar -tzf "${{ matrix.archive_name }}" | grep -F "usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png"
           tar -tzf "${{ matrix.archive_name }}" | grep -F "usr/share/applications/music-dl-desktop-go.desktop"
+          dpkg-deb -c "music-dl-desktop-go-linux-${{ matrix.goarch }}.deb" | grep -F "usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png"
+          rpm -qlp "music-dl-desktop-go-linux-${{ matrix.goarch }}.rpm" | grep -F "/usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png"
+          ./music-dl-desktop-go-linux-${{ matrix.goarch }}.AppImage --appimage-extract > /dev/null
+          test -f squashfs-root/usr/share/icons/hicolor/256x256/apps/music-dl-desktop-go.png
+          rm -rf squashfs-root
 
       - name: Verify desktop_go package (macOS)
         if: matrix.goos == 'darwin'
         run: |
           tar -tzf "${{ matrix.archive_name }}" | grep -F "music-dl-desktop-go.app/Contents/Resources/music-dl-desktop-go.icns"
           tar -tzf "${{ matrix.archive_name }}" | grep -F "music-dl-desktop-go.app/Contents/Info.plist"
+          test -f "music-dl-desktop-go-macos-${{ matrix.goarch }}.dmg"
+          test -f "music-dl-desktop-go-macos-${{ matrix.goarch }}.pkg"
+          hdiutil verify "music-dl-desktop-go-macos-${{ matrix.goarch }}.dmg"
 
       - name: Verify desktop_go package (Windows)
         if: matrix.goos == 'windows'
@@ -198,13 +361,35 @@ jobs:
           if ($null -eq $icon) { throw "desktop_go executable has no icon" }
           if ($icon.Size.Width -lt 16 -or $icon.Size.Height -lt 16) { throw "desktop_go icon is unexpectedly small" }
 
-      - name: Upload desktop_go Artifacts
+      - name: Upload desktop_go Artifacts (Linux)
+        if: matrix.goos == 'linux'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.archive_name }}
+            music-dl-desktop-go-linux-${{ matrix.goarch }}.deb
+            music-dl-desktop-go-linux-${{ matrix.goarch }}.rpm
+            music-dl-desktop-go-linux-${{ matrix.goarch }}.AppImage
+
+      - name: Upload desktop_go Artifacts (macOS)
+        if: matrix.goos == 'darwin'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.archive_name }}
+            music-dl-desktop-go-macos-${{ matrix.goarch }}.dmg
+            music-dl-desktop-go-macos-${{ matrix.goarch }}.pkg
+
+      - name: Upload desktop_go Artifacts (Windows)
+        if: matrix.goos == 'windows'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.archive_name }}
 
-  # 3. Windows desktop build
+  # 4. Windows desktop build
   build-windows-desktop:
+    needs:
+      - goreleaser
     runs-on: windows-latest
     strategy:
       matrix:
@@ -262,8 +447,10 @@ jobs:
         with:
           files: music-dl-desktop-rust-windows-${{ matrix.arch_name }}.zip
 
-  # 4. macOS desktop build
+  # 5. macOS desktop build
   build-macos:
+    needs:
+      - goreleaser
     runs-on: macos-latest
     strategy:
       matrix:
@@ -343,8 +530,10 @@ jobs:
             music-dl-desktop-rust-macos-*.dmg
             music-dl-desktop-rust-macos-*.pkg
 
-  # 5. Linux desktop build
+  # 6. Linux desktop build
   build-linux-desktop:
+    needs:
+      - goreleaser
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
