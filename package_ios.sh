@@ -4,10 +4,27 @@ set -e
 
 echo "--- 正在初始化 iOS 构建环境 ---"
 
-# 关键修复：Xcode 14 移除了 libarclite，强制提高最低 iOS 编译目标版本以避开该库的依赖
-export IPHONEOS_DEPLOYMENT_TARGET="14.0"
-export CGO_CFLAGS="-miphoneos-version-min=14.0"
-export CGO_LDFLAGS="-miphoneos-version-min=14.0"
+# 【终极修复方案】
+# 解决 Xcode 14.3+ 彻底移除 libarclite，而 gogio 内部又硬编码了低版本 target 导致的报错。
+# 我们动态获取当前 runner 上的 Xcode 路径，并将开源社区备份的 libarclite 补齐到对应目录。
+XCODE_PATH=$(xcode-select -p)
+ARC_DIR="${XCODE_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/lib/arc"
+
+if [ ! -d "$ARC_DIR" ]; then
+    echo "Xcode 缺少 arc 目录，正在从社区源补齐 libarclite 库..."
+    sudo mkdir -p "$ARC_DIR"
+    
+    # 补齐真机所需库
+    sudo curl -sSL -o "$ARC_DIR/libarclite_iphoneos.a" "https://raw.githubusercontent.com/kamyarelyasi/Libarclite-Files/main/arc/libarclite_iphoneos.a"
+    
+    # 补齐模拟器所需库 (即你刚才报错缺失的那个文件)
+    sudo curl -sSL -o "$ARC_DIR/libarclite_iphonesimulator.a" "https://raw.githubusercontent.com/kamyarelyasi/Libarclite-Files/main/arc/libarclite_iphonesimulator.a"
+    
+    sudo chmod +x "$ARC_DIR"/*.a
+    echo "libarclite 库补齐完毕！"
+else
+    echo "arc 目录已存在，跳过补齐。"
+fi
 
 # 1. 安装 gogio
 echo "正在下载并安装 gogio..."
