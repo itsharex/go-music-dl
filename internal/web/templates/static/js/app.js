@@ -971,7 +971,7 @@ function buildMediaSessionCoverURL(audio = getCurrentAPlayerAudio()) {
         });
     }
 
-    const currentId = String(audio?.custom_id || '').trim();
+    const currentId = String(audio?.custom_id || currentPlayingId || '').trim();
     if (currentId) {
         const card = Array.from(document.querySelectorAll('.song-card')).find(item => item?.dataset?.id === currentId);
         if (card) {
@@ -1051,8 +1051,13 @@ function buildMediaSessionCoverURL(audio = getCurrentAPlayerAudio()) {
         }
     }
 
-    if (fallbackCandidates.length > 0) {
-        return fallbackCandidates[0];
+    // Do not expose transient blob/data artwork URLs to MediaSession.
+    // They often expire quickly and cause a visible "flash then disappear" effect on MPRIS clients.
+    if (fallbackCandidates.length > 0 && trackKey) {
+        const cached = mediaSessionCoverCache.get(trackKey);
+        if (cached && !isTransientMediaSessionURL(cached)) {
+            return cached;
+        }
     }
 
     return '';
