@@ -67,9 +67,7 @@ if not defined JAVA_VERSION (
 	echo ERROR: failed to detect java version using "%JAVA_EXE%".
 	exit /b 1
 )
-if /i not "%JAVA_VERSION%"=="1.8.0_472" (
-	echo Using Java version %JAVA_VERSION%
-)
+echo Using Java version %JAVA_VERSION%
 echo %JAVA_VERSION% | findstr /b /c:"1.8." >nul
 if errorlevel 1 (
 	echo ERROR: gogio requires JDK 8. Current java version is %JAVA_VERSION%.

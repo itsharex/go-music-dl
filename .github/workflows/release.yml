@@ -396,6 +396,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare Android SDK Root
+        shell: cmd
+        run: |
+          set "SDK_ROOT=%RUNNER_TEMP%\android-sdk"
+          echo ANDROID_HOME=%SDK_ROOT%>> %GITHUB_ENV%
+          echo ANDROID_SDK_ROOT=%SDK_ROOT%>> %GITHUB_ENV%
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -419,7 +426,7 @@ jobs:
             exit /b 1
           )
           call "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" --licenses < NUL
-          call "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;27.0.12077973"
+          call "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;27.0.12077973"
 
       - name: Build APK
         shell: cmd
