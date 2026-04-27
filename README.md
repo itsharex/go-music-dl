@@ -16,7 +16,7 @@ Go Music DL 是一个音乐搜索与下载工具，支持 **Web 界面**、**TUI
 2. 解压，双击运行
 3. 享受原生桌面体验！
 
-移动端下载说明：在 [Releases](https://github.com/guohuiyuan/go-music-dl/releases) 页面可直接下载 Android `music-dl.apk` 与 iOS `music-dl-ios-unsigned.ipa`。
+移动端下载说明：在 [Releases](https://github.com/guohuiyuan/go-music-dl/releases) 页面可直接下载 Android `music-dl_arm64-v8a.apk`（推荐）/ `music-dl_x86_64.apk` / `music-dl.apk`（无分片兼容包）与 iOS `music-dl-ios-unsigned.ipa`。
 
 ### Web 模式
 
@@ -219,7 +219,11 @@ TUI 常用按键：
 
 ### Android APK 构建
 
-项目支持通过 Gio 打包 Android APK，输出文件为仓库根目录下的 `music-dl.apk`。
+项目支持通过 Gio 打包 Android APK，输出文件为仓库根目录下的三个 APK：
+
+* `music-dl_arm64-v8a.apk`（推荐，大多数 Android 设备）
+* `music-dl_x86_64.apk`（x86_64 设备/模拟器）
+* `music-dl.apk`（无分片兼容包，极个别设备无法使用分片包时再下载）
 
 #### 1. 本地构建 APK（Windows）
 
@@ -243,7 +247,7 @@ package_app.bat
 * 读取当前 Java 环境（`JAVA_HOME` / `java`）
 * 检测/安装 Android NDK
 * 安装 `gogio`
-* 构建 `music-dl.apk`
+* 构建 `music-dl_arm64-v8a.apk`、`music-dl_x86_64.apk`、`music-dl.apk`
 
 若检测到 adb，会打印安装命令，例如：
 
@@ -259,9 +263,9 @@ adb install -r music-dl.apk
 * 安装 Go、JDK 17、Android SDK
 * 安装 `platform-tools`、`platforms;android-33`、`build-tools;34.0.0`、`ndk;27.0.12077973`
 * 执行 `package_app.bat`
-* 上传 `music-dl.apk` 到 Actions Artifacts 和 GitHub Release
+* 上传 `music-dl_arm64-v8a.apk`、`music-dl_x86_64.apk`、`music-dl.apk` 到 Actions Artifacts 和 GitHub Release
 
-发布后可在 [Releases](https://github.com/guohuiyuan/go-music-dl/releases) 下载 `music-dl.apk`。
+发布后可在 [Releases](https://github.com/guohuiyuan/go-music-dl/releases) 下载三个 APK，推荐优先使用 `music-dl_arm64-v8a.apk`；极个别设备若无法安装/运行，再下载 `music-dl.apk`（无分片兼容包）。
 
 #### 3. Java 17 与 Build-Tools 版本说明（重点）
 

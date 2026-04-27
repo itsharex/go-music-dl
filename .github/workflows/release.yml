@@ -473,17 +473,31 @@ jobs:
             echo ERROR: music-dl.apk not found
             exit /b 1
           )
+          if not exist "music-dl_arm64-v8a.apk" (
+            echo ERROR: music-dl_arm64-v8a.apk not found
+            exit /b 1
+          )
+          if not exist "music-dl_x86_64.apk" (
+            echo ERROR: music-dl_x86_64.apk not found
+            exit /b 1
+          )
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: music-dl-android-apk
-          path: music-dl.apk
+          path: |
+            music-dl.apk
+            music-dl_arm64-v8a.apk
+            music-dl_x86_64.apk
 
       - name: Upload APK to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: music-dl.apk
+          files: |
+            music-dl.apk
+            music-dl_arm64-v8a.apk
+            music-dl_x86_64.apk
 
   # 5. iOS app build via Gio UI
   build-ios-app:
