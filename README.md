@@ -47,6 +47,7 @@ Go Music DL 是一个音乐搜索与下载工具，支持 **Web 界面**、**TUI
 * **无损音乐支持**: 支持网易云、QQ 音乐、Bilibili 的 FLAC 无损音乐下载
 * 多平台聚合搜索，支持单曲 / 歌单 / 专辑
 * 试听、歌词、封面下载
+* **歌词双格式支持**: 网易云、QQ 音乐、酷狗支持原文 / 译文 / 罗马音逐字 LRC 展示与卡拉 OK 式逐字高亮；其他渠道保持原文逐行歌词显示
 * Range 探测：显示大小与码率
 * 汽水音乐等加密音频解密
 * 过滤需要付费的资源
@@ -85,6 +86,7 @@ ffmpeg -version
 
 * **Web 架构全面重构**：前端代码彻底模块化（拆分独立的 JS / CSS / HTML 模板），后端路由按业务域拆分（音乐查询、歌单管理、视频生成），大幅提升代码可维护性。
 * **新增自制歌单功能**：Web 端支持本地收藏夹，用户可自由创建、编辑歌单，将不同平台的歌曲聚合收藏。
+* **逐字歌词增强**：Web 首页、歌曲详情页与视频渲染统一支持网易云 / QQ 音乐 / 酷狗的原文、译文、罗马音逐字歌词；其他渠道继续使用原文逐行歌词。
 * Web 试听按钮支持播放/停止切换，底部增加全局播放与音量控制栏。
 * Web 单曲支持“换源”，按相似度优先、时长接近、可播放验证。
 * 换源自动排除 soda 与 fivesing。
@@ -529,6 +531,7 @@ go-music-dl/
 * **接口设计参考**: [metowolf/Meting](https://github.com/metowolf/Meting) - 多平台音乐聚合与接口封装
 * **无损音乐**: [Suxiaoqinx/Netease_url](https://github.com/Suxiaoqinx/Netease_url) - 网易云音乐 FLAC 无损音乐解析
 * **QQ 音乐**: [Suxiaoqinx/qqmusic_flac](https://github.com/Suxiaoqinx/qqmusic_flac) - QQ 音乐 FLAC 解析
+* **逐字歌词展示参考**: [chenmozhijin/LDDC](https://github.com/chenmozhijin/LDDC) - 原文 / 译文 / 罗马音逐字歌词的组织与展示思路参考
 
 ## 免责声明
 
