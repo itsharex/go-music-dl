@@ -602,22 +602,23 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 	})
 
 	api.GET("/download_lrc", func(c *gin.Context) {
-		id := c.Query("id")
-		src := c.Query("source")
-		name := c.Query("name")
-		artist := c.Query("artist")
+		song := lyricSongFromQuery(c)
+		name := song.Name
+		artist := song.Artist
 
-		fn := core.GetLyricFunc(src)
+		fn := core.GetLyricFunc(song.Source)
 		if fn == nil {
 			c.String(404, "No support")
 			return
 		}
 
-		lrc, err := fn(&model.Song{ID: id, Source: src})
+		lrc, err := fn(song)
 		if err != nil || lrc == "" {
 			c.String(404, "Lyric not found")
 			return
 		}
+		lrc = formatLyricForMode(lrc, c.DefaultQuery("format", "auto"))
+		c.Header("X-Lyric-Format", classifyLyricFormat(lrc))
 
 		filename := fmt.Sprintf("%s - %s.lrc", name, artist)
 		setDownloadHeader(c, filename)
@@ -658,18 +659,32 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 	})
 
 	api.GET("/lyric", func(c *gin.Context) {
-		id := c.Query("id")
-		src := c.Query("source")
-		fn := core.GetLyricFunc(src)
+		song := lyricSongFromQuery(c)
+		fn := core.GetLyricFunc(song.Source)
 		if fn != nil {
-			lrc, _ := fn(&model.Song{ID: id, Source: src})
+			lrc, _ := fn(song)
 			if lrc != "" {
+				lrc = formatLyricForMode(lrc, c.DefaultQuery("format", "auto"))
+				c.Header("X-Lyric-Format", classifyLyricFormat(lrc))
 				c.String(200, lrc)
 				return
 			}
 		}
 		c.String(200, "[00:00.00] 纯音乐 / 无歌词")
 	})
+}
+
+func lyricSongFromQuery(c *gin.Context) *model.Song {
+	duration, _ := strconv.Atoi(strings.TrimSpace(c.Query("duration")))
+	return &model.Song{
+		ID:       strings.TrimSpace(c.Query("id")),
+		Source:   strings.TrimSpace(c.Query("source")),
+		Name:     strings.TrimSpace(c.Query("name")),
+		Artist:   strings.TrimSpace(c.Query("artist")),
+		Album:    strings.TrimSpace(c.Query("album")),
+		Duration: duration,
+		Extra:    parseSongExtraQuery(c.Query("extra")),
+	}
 }
 
 type switchCandidate struct {

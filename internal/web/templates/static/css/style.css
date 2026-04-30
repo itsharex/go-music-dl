@@ -239,6 +239,7 @@ body.batch-mode .song-card { padding-left: 10px; }
 .playlist-title { font-size: 14px; font-weight: 700; margin: 0 0 6px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .playlist-author { font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
 .playlist-count { font-size: 11px; color: #a0aec0; margin-top: auto; }
+.playlist-card-actions { display:flex; justify-content: space-between; align-items: flex-end; margin-top: auto; gap: 8px; }
 
 .col-action-btn { 
     background: rgba(255,255,255,0.95); border: 1px solid #e2e8f0; border-radius: 6px; 
@@ -390,6 +391,143 @@ body.batch-mode .song-card { padding-left: 10px; }
 
 .aplayer.aplayer-fixed { z-index: 10000 !important; }
 
+body.karaoke-lyrics-active .aplayer.aplayer-fixed .aplayer-lrc {
+    display: block !important;
+    position: fixed !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: 108px !important;
+    transform: translateX(-50%) !important;
+    width: min(920px, calc(100vw - 32px)) !important;
+    height: 228px !important;
+    padding: 18px 10px !important;
+    overflow: hidden !important;
+}
+
+body.karaoke-lyrics-active .aplayer.aplayer-fixed .aplayer-lrc .aplayer-lrc-contents {
+    position: relative !important;
+}
+
+body.karaoke-lyrics-active .aplayer .aplayer-lrc p,
+body.karaoke-lyrics-active .aplayer .aplayer-lrc p.aplayer-lrc-current {
+    opacity: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+}
+
+.karaoke-lyrics {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10001;
+    pointer-events: none;
+    overflow: hidden;
+    padding: 0 10px;
+    color: #d1fae5;
+    text-align: center;
+    text-shadow: 0 2px 8px rgba(15, 23, 42, 0.65);
+    mask-image: linear-gradient(to bottom, transparent, black 18%, black 82%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 18%, black 82%, transparent);
+}
+
+.karaoke-lyrics[data-fallback="true"] {
+    position: fixed;
+    left: 50%;
+    bottom: 108px;
+    transform: translateX(-50%);
+    width: min(860px, calc(100vw - 32px));
+    height: 210px;
+    padding: 18px 10px;
+}
+
+.karaoke-lyrics-body {
+    height: 100%;
+    overflow: hidden;
+    scroll-behavior: smooth;
+    padding: 10px 0 18px;
+}
+
+.karaoke-group {
+    min-height: 108px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    opacity: 0.28;
+    transform: scale(0.94);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.karaoke-group.active {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.karaoke-orig {
+    --karaoke-base-color: rgba(209, 250, 229, 0.42);
+    font-size: 27px;
+    line-height: 1.35;
+    font-weight: 800;
+    color: rgba(209, 250, 229, 0.78);
+}
+
+.karaoke-word {
+    --karaoke-progress: 0%;
+    position: relative;
+    display: inline-block;
+    white-space: pre;
+    vertical-align: top;
+    transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.karaoke-word-base,
+.karaoke-word-fill {
+    display: block;
+    white-space: pre;
+}
+
+.karaoke-word-base {
+    color: var(--karaoke-base-color, rgba(209, 250, 229, 0.42));
+}
+
+.karaoke-word-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--karaoke-progress);
+    overflow: hidden;
+    color: #10b981;
+    text-shadow: 0 0 12px rgba(16, 185, 129, 0.45);
+    transition: width 72ms linear;
+    will-change: width;
+}
+
+.karaoke-word.is-active {
+    transform: translateY(-1px);
+    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.28));
+}
+
+.karaoke-trans {
+    --karaoke-base-color: rgba(147, 197, 253, 0.9);
+    font-size: 17px;
+    line-height: 1.35;
+    font-weight: 650;
+    color: rgba(147, 197, 253, 0.9);
+}
+
+.karaoke-roma {
+    --karaoke-base-color: rgba(196, 181, 253, 0.78);
+    order: 1;
+    font-size: 14px;
+    line-height: 1.3;
+    color: rgba(196, 181, 253, 0.78);
+}
+
+.karaoke-trans {
+    order: 2;
+}
+
 /* 🌟 APlayer 主界面外部歌词：绿色大字号美化 */
 .aplayer.aplayer-fixed .aplayer-lrc {
     margin-bottom: 20px !important; 
@@ -426,10 +564,10 @@ body.batch-mode .song-card { padding-left: 10px; }
     min-height: 36px !important;
 }
 
-/* 🌟 恢复详情页 (视频生成器) 内歌词的原始透明白色高亮效果 */
-.vg-line { color: rgba(255, 255, 255, 0.4) !important; }
-.vg-line:hover { color: rgba(255, 255, 255, 0.8) !important; }
-.vg-line.active { color: #ffffff !important; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+/* 普通逐行歌词保持原有详情页高亮风格，逐字歌词改走独立样式 */
+.vg-line:not(.vg-line-karaoke) { color: rgba(255, 255, 255, 0.4) !important; }
+.vg-line:not(.vg-line-karaoke):hover { color: rgba(255, 255, 255, 0.8) !important; }
+.vg-line.active:not(.vg-line-karaoke) { color: #ffffff !important; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 
 @media (max-width: 768px) {
     /* 大幅增加底部内边距，确保列表最底部的歌曲能滚出来不被播放器挡住 */
@@ -447,6 +585,7 @@ body.batch-mode .song-card { padding-left: 10px; }
     .playlist-grid-container { padding: 0 12px; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .playlist-meta { padding: 8px; }
     .playlist-title { font-size: 12px; margin-bottom: 4px; }
+    .playlist-card-actions { flex-direction: column; align-items: stretch; }
     .song-card { margin: 0; padding: 12px; border-radius: 12px; align-items: flex-start; }
     .cover-wrapper { width: 54px; height: 54px; margin-right: 12px; border-radius: 8px; }
     .song-info h3 { font-size: 15px; margin-bottom: 4px; max-width: 100%; white-space: normal; }
@@ -531,6 +670,36 @@ body.batch-mode .song-card { padding-left: 10px; }
     }
 
     /* 移动端调整返回顶部按钮位置，依然保持在播放器上方不被挡住 */
+    .karaoke-lyrics[data-fallback="true"] {
+        bottom: 138px;
+        width: calc(100vw - 18px);
+        height: 212px;
+        padding: 12px 6px;
+    }
+
+    body.karaoke-lyrics-active .aplayer.aplayer-fixed .aplayer-lrc {
+        bottom: 138px !important;
+        width: calc(100vw - 18px) !important;
+        height: 212px !important;
+        padding: 12px 6px !important;
+    }
+
+    .karaoke-group {
+        min-height: 98px;
+    }
+
+    .karaoke-orig {
+        font-size: 21px;
+    }
+
+    .karaoke-trans {
+        font-size: 14px;
+    }
+
+    .karaoke-roma {
+        font-size: 12px;
+    }
+
     .back-to-top {
         bottom: 160px !important;
         bottom: calc(160px + env(safe-area-inset-bottom, 0px)) !important;

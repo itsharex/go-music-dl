@@ -24,12 +24,13 @@
     </div>
     <div class="playlist-grid-container">
         {{ range .Playlists }}
+        {{ $detailURL := playlistDetailURL $.Root $.SearchType . }}
         {{ $collectionKind := playlistExtraValue . "collection_kind" }}
         {{ $contentType := playlistExtraValue . "content_type" }}
         {{ $remoteSource := playlistExtraValue . "remote_source" }}
         {{ $editable := playlistExtraValue . "editable" }}
-        <div class="playlist-card" onclick="navigateTo('{{playlistDetailURL $.Root $.SearchType .}}')">
-            <div class="playlist-cover">
+        <div class="playlist-card" onclick="navigateTo('{{ $detailURL }}')">
+            <div class="playlist-cover" onclick="event.stopPropagation(); navigateTo('{{ $detailURL }}')">
                 <img src="{{ .Cover }}" loading="lazy" onerror="this.src='https://via.placeholder.com/400?text=Cover'">
                 <span class="tag {{ if eq .Source "local" }}tag-local{{ else }}tag-src{{ end }}" style="position:absolute; top:5px; right:5px; margin:0; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
                     {{ if eq .Source "local" }}
@@ -40,7 +41,7 @@
                 </span>
             </div>
             <div class="playlist-meta">
-                <div class="playlist-title">
+                <div class="playlist-title" onclick="event.stopPropagation(); navigateTo('{{ $detailURL }}')">
                     {{ .Name }}
                     {{ if .Link }}
                     <a href="{{ .Link }}" target="_blank" class="external-link-icon" title="打开原始页面" onclick="event.stopPropagation()">
@@ -56,7 +57,7 @@
                 </div>
                 {{ end }}
 
-                <div style="display:flex; justify-content: space-between; align-items: flex-end; margin-top: auto; gap: 8px;">
+                <div class="playlist-card-actions">
                     <div class="playlist-count">共 {{ .TrackCount }} 首</div>
 
                     {{ if eq .Source "local" }}
@@ -78,7 +79,7 @@
                     {{ else if or (eq $.SearchType "playlist") (eq $.SearchType "album") }}
                     <button type="button"
                             class="ctrl-btn primary"
-                            title="{{ if eq $.SearchType "album" }}导入到本地歌单列表，保存为外部导入专辑；仅保存元数据，不保存具体歌曲明细。{{ else }}导入到本地歌单列表，保存为外部导入歌单；仅保存元数据，不保存具体歌曲明细。{{ end }}"
+                            title="{{ if eq $.SearchType "album" }}导入到本地歌单列表，保存为外部导入专辑；仅保留元数据，不保存具体歌曲明细。{{ else }}导入到本地歌单列表，保存为外部导入歌单；仅保留元数据，不保存具体歌曲明细。{{ end }}"
                             data-name="{{.Name}}"
                             data-description="{{.Description}}"
                             data-cover="{{.Cover}}"
@@ -109,7 +110,7 @@
         <span class="pagination-text">第 {{ .Page }} / {{ .TotalPages }} 页</span>
         <span class="pagination-shortcut-hint">PgUp / PgDn</span>
         <button type="button" class="ctrl-btn primary" onclick="goToPage({{ .Page }} + 1)" {{ if ge .Page .TotalPages }}disabled{{ end }}>
-            下一页 <i class="fa-solid fa-chevron-right"></i>
+            下一页<i class="fa-solid fa-chevron-right"></i>
         </button>
     </div>
     {{ end }}

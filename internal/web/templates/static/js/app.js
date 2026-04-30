@@ -1,4 +1,4 @@
-// templates/app.js
+﻿// templates/app.js
 
 const API_ROOT = window.API_ROOT;
 const WEB_SETTINGS_KEY = 'musicdl:web_settings';
@@ -198,6 +198,38 @@ function buildDownloadURL(id, source, name, artist, cover, extra) {
     });
 }
 
+function buildLyricRequestURL(song, endpoint = 'lyric', format = 'auto') {
+    const params = new URLSearchParams({
+        id: String(song?.id || ''),
+        source: String(song?.source || ''),
+        name: String(song?.name || ''),
+        artist: String(song?.artist || ''),
+        album: String(song?.album || ''),
+        duration: String(song?.duration || 0),
+        format: String(format || 'auto')
+    });
+
+    const extraValue = typeof song?.extra === 'string'
+        ? song.extra
+        : JSON.stringify(song?.extra || {});
+    if (extraValue && extraValue !== '{}' && extraValue !== 'null') {
+        params.set('extra', extraValue);
+    }
+
+    return `${API_ROOT}/${endpoint}?${params.toString()}`;
+}
+
+function lyricURLsForSong(song) {
+    return {
+        line: buildLyricRequestURL(song, 'lyric', 'line'),
+        auto: buildLyricRequestURL(song, 'lyric', 'auto'),
+        download: buildLyricRequestURL(song, 'download_lrc', 'auto')
+    };
+}
+
+window.buildLyricRequestURL = buildLyricRequestURL;
+window.lyricURLsForSong = lyricURLsForSong;
+
 function updateDownloadButton(link) {
     if (!link) return;
 
@@ -209,9 +241,20 @@ function updateDownloadButton(link) {
     link.title = webSettings.downloadToLocal ? '保存到本地目录' : '下载歌曲';
 }
 
+function updateLyricButton(link) {
+    if (!link) return;
+
+    const card = link.closest('.song-card');
+    const song = songFromCard(card);
+    if (!song) return;
+
+    link.href = lyricURLsForSong(song).download;
+}
+
 function refreshDownloadLinks(root = document) {
     root.querySelectorAll('.song-card').forEach(card => {
         updateDownloadButton(card.querySelector('.btn-download'));
+        updateLyricButton(card.querySelector('.btn-lyric'));
     });
 }
 
@@ -325,9 +368,9 @@ async function handleDownloadClick(link) {
     link.style.opacity = '0.6';
     try {
         const data = await requestLocalDownload(link.href);
-        let message = `已保存到:\n${data.path || webSettings.downloadDir}`;
+        let message = `宸蹭繚瀛樺埌:\n${data.path || webSettings.downloadDir}`;
         if (data.warning) {
-            message += `\n\n提示: ${data.warning}`;
+            message += `\n\n鎻愮ず: ${data.warning}`;
         }
         alert(message);
     } catch (error) {
@@ -413,8 +456,10 @@ function bindSongCardCovers(root = document) {
                     source: card.dataset.source,
                     name: card.dataset.name,
                     artist: card.dataset.artist,
+                    album: card.dataset.album || '',
                     cover: currentCover,
-                    duration: parseInt(card.dataset.duration) || 0
+                    duration: parseInt(card.dataset.duration) || 0,
+                    extra: card.dataset.extra || ''
                 });
             } else {
                 console.error("VideoGen library not loaded.");
@@ -822,7 +867,7 @@ function inspectSong(card) {
         })
         .catch(() => {
             const el = document.getElementById(`size-${id}`);
-            if(el) el.textContent = "检测失败";
+            if (el) el.textContent = '检测失败';
         });
 }
 
@@ -1303,6 +1348,285 @@ function setupMediaSession() {
     syncMediaSession();
 }
 
+const KaraokeLyrics = (() => {
+    const timeRe = /\[(\d+):(\d+)\.(\d{1,3})\]/g;
+    const fallbackLineDuration = 1200;
+    let container = null;
+    let body = null;
+    let currentKey = '';
+    let groups = [];
+    let activeIndex = -1;
+    let visible = false;
+    let animationFrame = 0;
+
+    function getProgress(ms, start, end) {
+        if (ms <= start) return 0;
+        if (!Number.isFinite(end) || end <= start) return 1;
+        return Math.max(0, Math.min(1, (ms - start) / (end - start)));
+    }
+
+    function getLyricHost() {
+        return document.querySelector('.aplayer.aplayer-fixed .aplayer-lrc')
+            || document.querySelector('.aplayer-lrc')
+            || document.querySelector('.aplayer.aplayer-fixed .aplayer-lrc .aplayer-lrc-contents')
+            || document.querySelector('.aplayer-lrc .aplayer-lrc-contents')
+            || document.body;
+    }
+
+    function ensureContainer() {
+        const host = getLyricHost();
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'karaoke-lyrics';
+            container.className = 'karaoke-lyrics';
+            container.hidden = true;
+            container.innerHTML = '<div class="karaoke-lyrics-body"></div>';
+            body = container.querySelector('.karaoke-lyrics-body');
+        }
+        if (container.parentElement !== host) {
+            host.appendChild(container);
+        }
+        container.dataset.fallback = host === document.body ? 'true' : 'false';
+        return container;
+    }
+
+    function stopLoop() {
+        if (animationFrame) {
+            cancelAnimationFrame(animationFrame);
+            animationFrame = 0;
+        }
+    }
+
+    function animationTick() {
+        animationFrame = 0;
+        update();
+        if (visible && ap?.audio && !ap.audio.paused) {
+            animationFrame = requestAnimationFrame(animationTick);
+        }
+    }
+
+    function startLoop() {
+        if (animationFrame || !visible || !ap?.audio) return;
+        if (ap.audio.paused) {
+            update();
+            return;
+        }
+        animationFrame = requestAnimationFrame(animationTick);
+    }
+
+    function timeToMs(parts) {
+        const minute = Number(parts[1]) || 0;
+        const second = Number(parts[2]) || 0;
+        let ms = String(parts[3] || '0');
+        if (ms.length === 1) ms += '00';
+        if (ms.length === 2) ms += '0';
+        return minute * 60000 + second * 1000 + Number(ms.slice(0, 3));
+    }
+
+    function parseLine(line) {
+        timeRe.lastIndex = 0;
+        const matches = Array.from(line.matchAll(timeRe));
+        if (matches.length === 0) return null;
+        const start = timeToMs(matches[0]);
+        const words = [];
+        for (let i = 0; i < matches.length; i++) {
+            const textStart = matches[i].index + matches[i][0].length;
+            const textEnd = i + 1 < matches.length ? matches[i + 1].index : line.length;
+            const text = line.slice(textStart, textEnd);
+            if (!text) continue;
+            words.push({
+                start: timeToMs(matches[i]),
+                end: i + 1 < matches.length ? timeToMs(matches[i + 1]) : null,
+                text
+            });
+        }
+        const text = line.replace(timeRe, '').trim();
+        return { start, words, text, verbatim: matches.length > 1 };
+    }
+
+    function normalizeGroupWords(sourceWords, groupStart, groupEnd, fallbackText) {
+        const words = Array.isArray(sourceWords) && sourceWords.length > 0
+            ? sourceWords
+            : [{ text: fallbackText || '', start: groupStart, end: groupEnd }];
+        return words
+            .map((word, index) => {
+                const start = Number(word?.start);
+                const nextStart = index + 1 < words.length ? Number(words[index + 1]?.start) : NaN;
+                let end = Number(word?.end);
+                const safeStart = Number.isFinite(start) ? start : groupStart;
+                if (!Number.isFinite(end) || end <= safeStart) {
+                    end = Number.isFinite(nextStart) && nextStart > safeStart ? nextStart : groupEnd;
+                }
+                return {
+                    text: String(word?.text || ''),
+                    start: safeStart,
+                    end
+                };
+            })
+            .filter(word => word.text !== '');
+    }
+
+    function normalizeGroups(rawGroups) {
+        return (rawGroups || []).map((group, index, list) => {
+            const start = Number(group?.start || 0);
+            const nextStart = index + 1 < list.length ? Number(list[index + 1]?.start || 0) : 0;
+            const end = nextStart > start ? nextStart : start + fallbackLineDuration;
+            const lines = (group?.lines || []).map((line) => ({
+                ...line,
+                text: String(line?.text || ''),
+                words: normalizeGroupWords(line?.words, start, end, line?.text)
+            }));
+            return { start, end, lines };
+        }).filter(group => group.lines.some(line => line.text));
+    }
+
+    function parse(raw) {
+        const map = new Map();
+        let hasVerbatim = false;
+        String(raw || '').split(/\r?\n/).forEach((rawLine) => {
+            const line = rawLine.trim();
+            if (!line || /^\[[A-Za-z]+:[^\]]*\]$/.test(line)) return;
+            const parsed = parseLine(line);
+            if (!parsed || !parsed.text) return;
+            hasVerbatim = hasVerbatim || parsed.verbatim;
+            if (!map.has(parsed.start)) {
+                map.set(parsed.start, { start: parsed.start, lines: [] });
+            }
+            map.get(parsed.start).lines.push(parsed);
+        });
+        const result = normalizeGroups(Array.from(map.values()).sort((a, b) => a.start - b.start));
+        const hasMultiLang = result.some(group => group.lines.length > 1);
+        return {
+            type: hasVerbatim || hasMultiLang ? 'karaoke' : 'line',
+            groups: result
+        };
+    }
+
+    function renderGroup(group, index) {
+        const [orig, trans, roma] = group.lines;
+        const renderWords = (words, fallbackStart, fallbackEnd) => (words || [])
+            .map(word => [
+                `<span class="karaoke-word" data-start="${word.start || fallbackStart}" data-end="${word.end || fallbackEnd}" style="--karaoke-progress:0%;">`,
+                `<span class="karaoke-word-base">${escapeHTML(word.text)}</span>`,
+                `<span class="karaoke-word-fill">${escapeHTML(word.text)}</span>`,
+                '</span>'
+            ].join(''))
+            .join('');
+        const renderLine = (line, className, useWordProgress) => {
+            if (!line?.text) return '';
+            const content = useWordProgress && Array.isArray(line.words) && line.words.length > 0
+                ? renderWords(line.words, group.start, group.end)
+                : escapeHTML(line.text);
+            return `<div class="${className}">${content}</div>`;
+        };
+        return [
+            `<div class="karaoke-group" data-index="${index}" data-start="${group.start}">`,
+            renderLine(orig, 'karaoke-orig', true),
+            renderLine(roma, 'karaoke-roma', !!roma?.verbatim),
+            renderLine(trans, 'karaoke-trans', !!trans?.verbatim),
+            '</div>'
+        ].join('');
+    }
+
+    function show(nextGroups) {
+        ensureContainer();
+        groups = nextGroups || [];
+        activeIndex = -1;
+        body.innerHTML = groups.map(renderGroup).join('');
+        visible = groups.length > 0;
+        container.hidden = !visible;
+        document.body.classList.toggle('karaoke-lyrics-active', visible);
+        startLoop();
+    }
+
+    function hide() {
+        ensureContainer();
+        stopLoop();
+        visible = false;
+        groups = [];
+        activeIndex = -1;
+        body.innerHTML = '';
+        container.hidden = true;
+        document.body.classList.remove('karaoke-lyrics-active');
+    }
+
+    async function load(audio) {
+        ensureContainer();
+        const key = `${audio?.source || ''}:${audio?.custom_id || ''}:${audio?.raw_lrc || audio?.lrc || ''}`;
+        if (!audio || !key.trim()) {
+            currentKey = '';
+            hide();
+            return;
+        }
+        if (key === currentKey) {
+            update();
+            return;
+        }
+        currentKey = key;
+        hide();
+
+        const url = audio.raw_lrc || audio.lrc;
+        if (!url) return;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) return;
+            const raw = await response.text();
+            if (key !== currentKey) return;
+            const parsed = parse(raw);
+            if (parsed.type !== 'karaoke') {
+                hide();
+                return;
+            }
+            show(parsed.groups);
+            update();
+            startLoop();
+        } catch (_) {
+            hide();
+        }
+    }
+
+    function update() {
+        if (!visible || !ap?.audio || groups.length === 0) return;
+        const ms = Math.max(0, (Number(ap.audio.currentTime) || 0) * 1000);
+        let nextIndex = -1;
+        for (let i = 0; i < groups.length; i++) {
+            if (ms >= groups[i].start) nextIndex = i;
+            else break;
+        }
+        if (nextIndex < 0) return;
+
+        const active = body.querySelector(`.karaoke-group[data-index="${nextIndex}"]`);
+        if (!active) return;
+        if (nextIndex !== activeIndex) {
+            body.querySelectorAll('.karaoke-group.active').forEach(el => el.classList.remove('active'));
+            active.classList.add('active');
+            const targetTop = active.offsetTop - Math.max(0, (body.clientHeight - active.clientHeight) / 2);
+            body.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+            activeIndex = nextIndex;
+        }
+        body.querySelectorAll('.karaoke-word').forEach(word => {
+            const start = Number(word.dataset.start || 0);
+            const end = Number(word.dataset.end || start + fallbackLineDuration);
+            const progress = getProgress(ms, start, end);
+            word.style.setProperty('--karaoke-progress', `${(progress * 100).toFixed(3)}%`);
+            word.classList.toggle('is-active', progress > 0 && progress < 1);
+        });
+    }
+
+    function handlePlayStateChange(isPlaying) {
+        if (isPlaying) {
+            startLoop();
+            return;
+        }
+        update();
+        stopLoop();
+    }
+
+    return { load, update, hide, parse, handlePlayStateChange };
+})();
+
+window.KaraokeLyrics = KaraokeLyrics;
+
 // APlayer Config
 const ap = new APlayer({
     container: document.getElementById('aplayer'),
@@ -1323,6 +1647,12 @@ let currentPlayingId = null;
 window.currentPlayingId = null; 
 
 setupMediaSession();
+ap.audio.addEventListener('timeupdate', () => KaraokeLyrics.update());
+ap.audio.addEventListener('seeked', () => KaraokeLyrics.update());
+ap.audio.addEventListener('loadedmetadata', () => KaraokeLyrics.load(getCurrentAPlayerAudio()));
+ap.audio.addEventListener('play', () => KaraokeLyrics.handlePlayStateChange(true));
+ap.audio.addEventListener('pause', () => KaraokeLyrics.handlePlayStateChange(false));
+ap.audio.addEventListener('ended', () => KaraokeLyrics.handlePlayStateChange(false));
 
 setTimeout(() => {
     const apPic = document.querySelector('.aplayer-pic');
@@ -1346,8 +1676,10 @@ setTimeout(() => {
                     source: audio.source || 'netease',
                     name: audio.name,
                     artist: audio.artist,
+                    album: audio.album || '',
                     cover: audio.cover,
-                    duration: 0 
+                    duration: parseInt(audio.duration) || 0,
+                    extra: audio.extra || ''
                 });
             }
         }, true);
@@ -1371,14 +1703,17 @@ ap.on('listswitch', (e) => {
                     source: newAudio.source || 'netease',
                     name: newAudio.name,
                     artist: newAudio.artist,
+                    album: newAudio.album || '',
                     cover: newAudio.cover,
-                    duration: 0
+                    duration: parseInt(newAudio.duration) || 0,
+                    extra: newAudio.extra || ''
                 });
             }
         }
     }
     syncMediaSession(newAudio || getCurrentAPlayerAudio());
     scheduleMediaSessionSync(newAudio || getCurrentAPlayerAudio(), 180);
+    KaraokeLyrics.load(newAudio || getCurrentAPlayerAudio());
 });
 
 ap.on('play', () => {
@@ -1392,6 +1727,7 @@ ap.on('play', () => {
     syncAllPlayButtons();
     syncMediaSession(audio || getCurrentAPlayerAudio());
     scheduleMediaSessionSync(audio || getCurrentAPlayerAudio(), 180);
+    KaraokeLyrics.load(audio || getCurrentAPlayerAudio());
     
     if (window.VideoGen && window.VideoGen.updatePlayBtnState) {
         window.VideoGen.updatePlayBtnState(true);
@@ -1412,6 +1748,7 @@ ap.on('ended', () => {
     highlightCard(null);
     syncAllPlayButtons();
     scheduleMediaSessionSync(getCurrentAPlayerAudio(), 180);
+    KaraokeLyrics.hide();
 });
 
 function highlightCard(targetId) {
@@ -1432,7 +1769,7 @@ function setPlayButtonState(card, isPlaying) {
 
     icon.classList.remove('fa-play', 'fa-stop');
     icon.classList.add(isPlaying ? 'fa-stop' : 'fa-play');
-    btn.title = isPlaying ? '停止' : '播放';
+    btn.title = isPlaying ? '鍋滄' : '鎾斁';
 }
 
 function syncAllPlayButtons() {
@@ -1476,7 +1813,7 @@ function containsEastAsianChar(value) {
 }
 
 function trimArtistToken(value) {
-    return String(value || '').trim().replace(/^[-_·•/|\\,，、;；&＆]+|[-_·•/|\\,，、;；&＆]+$/g, '').trim();
+    return String(value || '').trim().replace(/^[-_·|\\/,，、；;&\s]+|[-_·|\\/,，、；;&\s]+$/g, '').trim();
 }
 
 function splitArtistTokens(artist) {
@@ -1484,12 +1821,12 @@ function splitArtistTokens(artist) {
     if (!rawArtist) return [];
 
     let normalized = rawArtist.replace(/\s+(feat(?:uring)?\.?|ft\.?|with|x)\s+/ig, '|');
-    normalized = normalized.replace(/[、,，;；|]/g, '|');
+    normalized = normalized.replace(/[、，；;]/g, '|');
 
     if (containsEastAsianChar(rawArtist)) {
-        normalized = normalized.replace(/[\/／&＆]/g, '|');
+        normalized = normalized.replace(/[\/&]/g, '|');
     } else {
-        normalized = normalized.replace(/\s+(?:\/|／|&|＆)\s+/g, '|');
+        normalized = normalized.replace(/\s+(?:\/|&|\+)\s+/g, '|');
     }
 
     const tokens = [];
@@ -1622,8 +1959,10 @@ function updateCardWithSong(card, song) {
                     source: card.dataset.source,
                     name: card.dataset.name,
                     artist: card.dataset.artist,
+                    album: card.dataset.album || '',
                     cover: imgEl.src,
-                    duration: parseInt(card.dataset.duration) || 0
+                    duration: parseInt(card.dataset.duration) || 0,
+                    extra: card.dataset.extra || ''
                 });
             }
         };
@@ -1638,13 +1977,13 @@ function updateCardWithSong(card, song) {
 
     const lrc = card.querySelector('.btn-lyric');
     if (lrc) {
-        lrc.href = `${API_ROOT}/download_lrc?id=${encodeURIComponent(song.id)}&source=${song.source}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
+        lrc.href = lyricURLsForSong(song).download;
         lrc.id = `lrc-${song.id}`;
     }
 
     const coverBtn = card.querySelector('.btn-cover');
     if (coverBtn) {
-        // 让新卡片的封面按钮始终能够使用或使用占位图响应
+        // 璁╂柊鍗＄墖鐨勫皝闈㈡寜閽缁堣兘澶熶娇鐢ㄦ垨浣跨敤鍗犱綅鍥惧搷搴?
         let targetCoverUrl = song.cover || 'https://via.placeholder.com/600?text=No+Cover';
         coverBtn.href = `${API_ROOT}/download_cover?url=${encodeURIComponent(targetCoverUrl)}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
     }
@@ -1684,9 +2023,13 @@ function syncSongToAPlayer(oldId, newSong) {
         audio.album = newSong.album || '';
         audio.cover = newSong.cover;
         audio.url = buildStreamURL(newSong.id, newSong.source, newSong.name, newSong.artist, newSong.cover || '', newSong.extra ? JSON.stringify(newSong.extra) : '');
-        audio.lrc = `${API_ROOT}/lyric?id=${encodeURIComponent(newSong.id)}&source=${newSong.source}`;
+        const lyricURLs = lyricURLsForSong(newSong);
+        audio.lrc = lyricURLs.line;
+        audio.raw_lrc = lyricURLs.auto;
         audio.custom_id = newSong.id; 
         audio.source = newSong.source; 
+        audio.duration = newSong.duration || 0;
+        audio.extra = newSong.extra ? JSON.stringify(newSong.extra) : '';
         
         if (ap.list.index === index) {
             ap.list.switch(index); 
@@ -1751,6 +2094,9 @@ function playAllAndJumpTo(btn) {
 
     allCards.forEach(card => {
         const ds = card.dataset;
+        const song = songFromCard(card);
+        if (!song) return;
+        const lyricURLs = lyricURLsForSong(song);
         let coverUrl = ds.cover || '';
         const imgEl = card.querySelector('.cover-wrapper img');
         if (imgEl && imgEl.src) coverUrl = imgEl.src;
@@ -1761,10 +2107,13 @@ function playAllAndJumpTo(btn) {
             album: ds.album || '',
             url: buildStreamURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || '', ds.extra || ''),
             cover: coverUrl,
-            lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
+            lrc: lyricURLs.line,
+            raw_lrc: lyricURLs.auto,
             theme: '#10b981',
             custom_id: ds.id,
-            source: ds.source
+            source: ds.source,
+            duration: parsePositiveInt(ds.duration, 0),
+            extra: ds.extra || ''
         });
     });
 
@@ -1879,7 +2228,7 @@ function getSelectedSongs() {
         if (card) {
             const song = songFromCard(card);
             if (!song) return;
-            const ds = card.dataset;
+            const lyricURLs = lyricURLsForSong(song);
 
             songs.push({
                 id: song.id,
@@ -1890,7 +2239,8 @@ function getSelectedSongs() {
                 extra: song.extra,
                 url: buildDownloadURL(song.id, song.source, song.name, song.artist, song.cover || '', song.extra || ''),
                 cover: song.cover,
-                lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
+                lrc: lyricURLs.line,
+                raw_lrc: lyricURLs.auto,
                 theme: '#10b981'
             });
         }
@@ -1906,7 +2256,7 @@ async function batchDownload() {
     const originalBatchDlHTML = batchDl ? batchDl.innerHTML : '';
 
     if (webSettings.downloadToLocal) {
-        if (!confirm(`准备将 ${songs.length} 首歌曲保存到本地目录：\n${webSettings.downloadDir}`)) {
+        if (!confirm(`准备将 ${songs.length} 首歌曲保存到本地目录:\n${webSettings.downloadDir}`)) {
             return;
         }
     } else {
@@ -1991,7 +2341,7 @@ function batchSwitchSource() {
 }
 
 // ==========================================
-// 自制歌单 (本地收藏夹) 前端交互
+// 自制歌单（本地收藏夹）前端交互
 // ==========================================
 
 let pendingFavSong = null;
@@ -2123,7 +2473,7 @@ function importCollectionFromButton(btn) {
 }
 
 function deleteCollection(id) {
-    if (!confirm('确定删除此歌单吗？内含歌曲记录也将被清空！')) return;
+    if (!confirm('确定删除此歌单吗？内部歌曲记录也将被清空。')) return;
     fetch(`${API_ROOT}/collections/${id}`, { method: 'DELETE' })
         .then(r => r.json())
         .then(res => {
@@ -2133,7 +2483,7 @@ function deleteCollection(id) {
 }
 
 function deleteCollectionFromModal(id) {
-    if (!confirm('确定删除此歌单吗？内含歌曲记录也将被清空！')) return;
+    if (!confirm('确定删除此歌单吗？内部歌曲记录也将被清空。')) return;
     fetch(`${API_ROOT}/collections/${id}`, { method: 'DELETE' })
         .then(r => r.json())
         .then(res => {
@@ -2150,7 +2500,7 @@ function refreshAddToCollectionList() {
         .then(r => r.json())
         .then(data => {
             if (!data || data.length === 0) {
-                container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">暂无歌单，请点击上方「新建」创建</div>';
+                container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">暂无歌单，请点击上方“新建”创建</div>';
                 return;
             }
             container.innerHTML = '';

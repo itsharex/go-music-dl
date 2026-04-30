@@ -155,7 +155,7 @@
                     <i class="fa-solid fa-download"></i>
                 </a>
 
-                <a href="{{$.Root}}/download_lrc?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}"
+                <a href="{{$.Root}}/download_lrc?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}&album={{.Album}}&duration={{.Duration}}&extra={{urlquery (tojson .Extra)}}"
                    id="lrc-{{.ID}}" class="btn-circle btn-dl btn-lyric" title="下载歌词" target="_blank">
                     <i class="fa-solid fa-file-lines"></i>
                 </a>

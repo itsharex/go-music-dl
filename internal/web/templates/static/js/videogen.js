@@ -78,6 +78,96 @@
     // 独立新窗口渲染线程 (Worker 环境)
     // =================================================================
     if (window.isRenderWorker) {
+        const fallbackLineDurationWorker = 1200;
+
+        function lyricProgressWorker(nowMs, start, end) {
+            if (nowMs <= start) return 0;
+            if (!Number.isFinite(end) || end <= start) return 1;
+            return Math.max(0, Math.min(1, (nowMs - start) / (end - start)));
+        }
+
+        function normalizeGroupWordsWorker(sourceWords, groupStart, groupEnd, fallbackText) {
+            const words = Array.isArray(sourceWords) && sourceWords.length > 0
+                ? sourceWords
+                : [{ text: fallbackText || '', start: groupStart, end: groupEnd }];
+            return words.map((word, index) => {
+                const start = Number(word?.start);
+                const nextStart = index + 1 < words.length ? Number(words[index + 1]?.start) : NaN;
+                let end = Number(word?.end);
+                const safeStart = Number.isFinite(start) ? start : groupStart;
+                if (!Number.isFinite(end) || end <= safeStart) {
+                    end = Number.isFinite(nextStart) && nextStart > safeStart ? nextStart : groupEnd;
+                }
+                return {
+                    text: String(word?.text || ''),
+                    start: safeStart,
+                    end
+                };
+            }).filter(word => word.text !== '');
+        }
+
+        function normalizeLyricGroupsWorker(rawGroups) {
+            return (rawGroups || []).map((group, index, list) => {
+                const start = Number(group?.start || 0);
+                const nextStart = index + 1 < list.length ? Number(list[index + 1]?.start || 0) : 0;
+                const end = nextStart > start ? nextStart : start + fallbackLineDurationWorker;
+                const lines = (group?.lines || []).map((line) => ({
+                    ...line,
+                    text: String(line?.text || ''),
+                    words: normalizeGroupWordsWorker(line?.words, start, end, line?.text)
+                }));
+                return { start, end, time: start / 1000, lines };
+            }).filter(group => group.lines.some(line => line.text));
+        }
+
+        function wrapPlainTextWorker(ctx, text, maxW) {
+            const lines = [];
+            let currentLine = '';
+            const chars = Array.from(String(text || ''));
+            for (let i = 0; i < chars.length; i++) {
+                const next = currentLine + chars[i];
+                if (ctx.measureText(next).width > maxW && currentLine.length > 0) {
+                    if (/[a-zA-Z]/.test(chars[i]) && currentLine.includes(' ')) {
+                        const lastSpace = currentLine.lastIndexOf(' ');
+                        lines.push(currentLine.substring(0, lastSpace));
+                        currentLine = currentLine.substring(lastSpace + 1) + chars[i];
+                    } else {
+                        lines.push(currentLine);
+                        currentLine = chars[i];
+                    }
+                } else {
+                    currentLine = next;
+                }
+            }
+            if (currentLine) lines.push(currentLine);
+            return lines;
+        }
+
+        function wrapWordSegmentsWorker(ctx, words, maxW) {
+            const lines = [];
+            let currentLine = [];
+            let currentWidth = 0;
+            words.forEach((word) => {
+                const width = ctx.measureText(word.text || '').width;
+                if (currentLine.length > 0 && currentWidth + width > maxW) {
+                    lines.push(currentLine);
+                    currentLine = [];
+                    currentWidth = 0;
+                }
+                currentLine.push(word);
+                currentWidth += width;
+            });
+            if (currentLine.length > 0) lines.push(currentLine);
+            return lines;
+        }
+
+        function createLineOnlyGroupsWorker(lyricRaw) {
+            return normalizeLyricGroupsWorker((lyricRaw || []).map((item) => ({
+                start: Math.round((Number(item?.time) || 0) * 1000),
+                lines: [{ text: String(item?.text || ''), words: [] }]
+            })));
+        }
+
         async function runOfflineRender(data) {
             const apiRoot = data.apiRoot;
             const statusText = document.getElementById("status-text");
@@ -163,7 +253,11 @@
                 const rawData = audioBuffer.getChannelData(0);
                 const samplesPerFrame = Math.floor(audioBuffer.sampleRate / fps);
                 const batchSize = 30; 
-                
+                const lyricGroups = Array.isArray(data.lyricGroups) && data.lyricGroups.length > 0
+                    ? normalizeLyricGroupsWorker(data.lyricGroups)
+                    : createLineOnlyGroupsWorker(data.lyricRaw);
+                const renderKaraoke = data.lyricMode === 'karaoke' && lyricGroups.length > 0;
+                 
                 FFT.reset();
                 setStatus("超清渲染中", "0%", 30);
                 
@@ -185,7 +279,268 @@
                         bgMedia.addEventListener('seeked', onSeeked);
                     });
                 };
-                
+
+                const drawWrappedLines = (lines, x, startY, lineHeight, color, alpha) => {
+                    ctx.fillStyle = color;
+                    let y = startY + lineHeight / 2;
+                    for (const lineText of lines) {
+                        ctx.globalAlpha = alpha;
+                        ctx.fillText(lineText, x, y);
+                        y += lineHeight;
+                    }
+                    ctx.globalAlpha = 1;
+                    return startY + (lines.length * lineHeight);
+                };
+
+                const drawKaraokeWordLine = (words, x, y, lineHeight, nowMs, baseColor, fillColor, alpha) => {
+                    let cursorX = x;
+                    words.forEach((word) => {
+                        const text = String(word?.text || '');
+                        if (!text) return;
+                        const width = ctx.measureText(text).width;
+                        ctx.globalAlpha = alpha;
+                        ctx.fillStyle = baseColor;
+                        ctx.fillText(text, cursorX, y);
+                        const progress = lyricProgressWorker(nowMs, Number(word.start || 0), Number(word.end || 0));
+                        if (progress > 0) {
+                            ctx.save();
+                            ctx.beginPath();
+                            ctx.rect(cursorX, y - lineHeight / 2, width * progress, lineHeight);
+                            ctx.clip();
+                            ctx.fillStyle = fillColor;
+                            ctx.fillText(text, cursorX, y);
+                            ctx.restore();
+                        }
+                        cursorX += width;
+                    });
+                    ctx.globalAlpha = 1;
+                };
+
+                const drawLineLyrics = (time, lx, baseLy, maxWidth, gap) => {
+                    let activeIdx = -1;
+                    for (let i = 0; i < data.lyricRaw.length; i++) {
+                        if (time >= data.lyricRaw[i].time) activeIdx = i;
+                        else break;
+                    }
+                    if (activeIdx === -1) return;
+
+                    let lyricsBlocks = [];
+                    let activeBlockIndex = -1;
+                    for (let offset = -4; offset <= 4; offset++) {
+                        const idx = activeIdx + offset;
+                        if (idx >= 0 && idx < data.lyricRaw.length) {
+                            const isCurrent = offset === 0;
+                            ctx.font = isCurrent ? "bold 36px sans-serif" : "600 26px sans-serif";
+                            const lineHeight = isCurrent ? 48 : 34;
+                            const textLines = wrapPlainTextWorker(ctx, data.lyricRaw[idx].text, maxWidth);
+                            const blockHeight = (textLines.length - 1) * lineHeight;
+
+                            lyricsBlocks.push({
+                                textLines,
+                                isCurrent,
+                                lineHeight,
+                                blockHeight,
+                                font: ctx.font,
+                                color: isCurrent ? "#ffffff" : "rgba(255,255,255,0.85)",
+                                shadowBlur: isCurrent ? 6 : 4,
+                                shadowOffset: isCurrent ? 2 : 1
+                            });
+                            if (isCurrent) activeBlockIndex = lyricsBlocks.length - 1;
+                        }
+                    }
+
+                    if (activeBlockIndex === -1) return;
+                    const activeBlock = lyricsBlocks[activeBlockIndex];
+                    activeBlock.startY = baseLy - (activeBlock.blockHeight / 2);
+                    for (let i = activeBlockIndex + 1; i < lyricsBlocks.length; i++) {
+                        const prev = lyricsBlocks[i - 1];
+                        lyricsBlocks[i].startY = prev.startY + prev.blockHeight + gap + (prev.lineHeight / 2) + (lyricsBlocks[i].lineHeight / 2);
+                    }
+                    for (let i = activeBlockIndex - 1; i >= 0; i--) {
+                        const next = lyricsBlocks[i + 1];
+                        lyricsBlocks[i].startY = next.startY - lyricsBlocks[i].blockHeight - gap - (next.lineHeight / 2) - (lyricsBlocks[i].lineHeight / 2);
+                    }
+
+                    for (const block of lyricsBlocks) {
+                        ctx.font = block.font;
+                        ctx.fillStyle = block.color;
+                        ctx.shadowColor = "rgba(0,0,0,0.9)";
+                        ctx.shadowBlur = block.shadowBlur;
+                        ctx.shadowOffsetX = block.shadowOffset;
+                        ctx.shadowOffsetY = block.shadowOffset;
+                        let lineY = block.startY;
+                        for (const lineText of block.textLines) {
+                            let alpha = 1;
+                            const dist = Math.abs(lineY - baseLy);
+                            if (dist > 230) alpha = Math.max(0, 1 - (dist - 230) / 70);
+                            if (alpha > 0) {
+                                ctx.globalAlpha = alpha;
+                                ctx.fillText(lineText, lx, lineY);
+                                ctx.globalAlpha = 1;
+                            }
+                            lineY += block.lineHeight;
+                        }
+                    }
+                };
+
+                const drawKaraokeLyrics = (timeMs, lx, baseLy, maxWidth) => {
+                    const karaokeFillColor = "#10b981";
+                    const createLineLayout = (line, font, lineHeight, useWordProgress) => {
+                        if (!line?.text) {
+                            return { useWordProgress: false, wordLines: [], textLines: [], lineHeight, height: 0 };
+                        }
+                        ctx.font = font;
+                        if (useWordProgress && Array.isArray(line.words) && line.words.length > 0) {
+                            const wordLines = wrapWordSegmentsWorker(ctx, line.words, maxWidth);
+                            const textLines = wordLines.map((lineWords) => lineWords.map((word) => word.text).join(''));
+                            return {
+                                useWordProgress: true,
+                                wordLines,
+                                textLines,
+                                lineHeight,
+                                height: textLines.length * lineHeight
+                            };
+                        }
+                        const textLines = wrapPlainTextWorker(ctx, line.text, maxWidth);
+                        return {
+                            useWordProgress: false,
+                            wordLines: [],
+                            textLines,
+                            lineHeight,
+                            height: textLines.length * lineHeight
+                        };
+                    };
+                    const drawLineLayout = (layout, x, startY, font, now, baseColor, alpha, isCurrent) => {
+                        if (!layout || layout.textLines.length === 0) return startY;
+                        ctx.font = font;
+                        if (layout.useWordProgress && isCurrent) {
+                            layout.wordLines.forEach((lineWords, lineIndex) => {
+                                const y = startY + (lineIndex * layout.lineHeight) + layout.lineHeight / 2;
+                                drawKaraokeWordLine(lineWords, x, y, layout.lineHeight, now, baseColor, karaokeFillColor, alpha);
+                            });
+                        } else {
+                            layout.textLines.forEach((lineText, lineIndex) => {
+                                const y = startY + (lineIndex * layout.lineHeight) + layout.lineHeight / 2;
+                                ctx.fillStyle = baseColor;
+                                ctx.globalAlpha = alpha;
+                                ctx.fillText(lineText, x, y);
+                                ctx.globalAlpha = 1;
+                            });
+                        }
+                        return startY + layout.height;
+                    };
+                    let activeIdx = -1;
+                    for (let i = 0; i < lyricGroups.length; i++) {
+                        if (timeMs >= lyricGroups[i].start) activeIdx = i;
+                        else break;
+                    }
+                    if (activeIdx === -1) return;
+
+                    const blocks = [];
+                    let currentBlockIndex = -1;
+                    for (let offset = -1; offset <= 1; offset++) {
+                        const idx = activeIdx + offset;
+                        if (idx < 0 || idx >= lyricGroups.length) continue;
+
+                        const group = lyricGroups[idx];
+                        const [orig, trans, roma] = group.lines;
+                        if (!orig) continue;
+
+                        const isCurrent = offset === 0;
+                        const blockAlpha = isCurrent ? 1 : 0.4;
+                        const origFont = isCurrent ? "bold 40px sans-serif" : "700 28px sans-serif";
+                        const origLineHeight = isCurrent ? 52 : 38;
+                        const subGap = isCurrent ? 10 : 8;
+                        const transFont = isCurrent ? "600 24px sans-serif" : "500 18px sans-serif";
+                        const transLineHeight = isCurrent ? 30 : 22;
+                        const romaFont = isCurrent ? "500 20px sans-serif" : "500 16px sans-serif";
+                        const romaLineHeight = isCurrent ? 26 : 20;
+
+                        const origLayout = createLineLayout(orig, origFont, origLineHeight, true);
+                        const romaLayout = createLineLayout(roma, romaFont, romaLineHeight, !!roma?.verbatim);
+                        const transLayout = createLineLayout(trans, transFont, transLineHeight, !!trans?.verbatim);
+
+                        const blockHeight =
+                            origLayout.height +
+                            (romaLayout.height > 0 ? (subGap + romaLayout.height) : 0) +
+                            (transLayout.height > 0 ? (subGap + transLayout.height) : 0);
+
+                        blocks.push({
+                            isCurrent,
+                            alpha: blockAlpha,
+                            origFont,
+                            origLayout,
+                            transFont,
+                            transLayout,
+                            romaFont,
+                            romaLayout,
+                            blockHeight,
+                            subGap
+                        });
+                        if (isCurrent) currentBlockIndex = blocks.length - 1;
+                    }
+
+                    if (currentBlockIndex === -1) return;
+                    const blockGap = 28;
+                    blocks[currentBlockIndex].topY = baseLy - (blocks[currentBlockIndex].blockHeight / 2);
+                    for (let i = currentBlockIndex + 1; i < blocks.length; i++) {
+                        const prev = blocks[i - 1];
+                        blocks[i].topY = prev.topY + prev.blockHeight + blockGap;
+                    }
+                    for (let i = currentBlockIndex - 1; i >= 0; i--) {
+                        const next = blocks[i + 1];
+                        blocks[i].topY = next.topY - blocks[i].blockHeight - blockGap;
+                    }
+
+                    blocks.forEach((block) => {
+                        ctx.shadowColor = "rgba(0,0,0,0.9)";
+                        ctx.shadowBlur = block.isCurrent ? 8 : 4;
+                        ctx.shadowOffsetX = block.isCurrent ? 2 : 1;
+                        ctx.shadowOffsetY = block.isCurrent ? 2 : 1;
+
+                        let currentY = block.topY;
+
+                        currentY = drawLineLayout(
+                            block.origLayout,
+                            lx,
+                            currentY,
+                            block.origFont,
+                            timeMs,
+                            block.isCurrent ? "rgba(209,250,229,0.42)" : "rgba(209,250,229,0.72)",
+                            block.alpha,
+                            block.isCurrent
+                        );
+
+                        if (block.romaLayout.height > 0) {
+                            currentY += block.subGap;
+                            currentY = drawLineLayout(
+                                block.romaLayout,
+                                lx,
+                                currentY,
+                                block.romaFont,
+                                timeMs,
+                                block.isCurrent ? "rgba(196,181,253,0.55)" : "rgba(196,181,253,0.9)",
+                                block.alpha,
+                                block.isCurrent
+                            );
+                        }
+
+                        if (block.transLayout.height > 0) {
+                            currentY += block.subGap;
+                            drawLineLayout(
+                                block.transLayout,
+                                lx,
+                                currentY,
+                                block.transFont,
+                                timeMs,
+                                block.isCurrent ? "rgba(147,197,253,0.55)" : "rgba(147,197,253,0.9)",
+                                block.alpha,
+                                block.isCurrent
+                            );
+                        }
+                    });
+                };
+                 
                 const drawFrame = async (frameIdx) => {
                     const time = frameIdx / fps;
                     if (data.isVideoBg) await seekVideo(time);
@@ -237,71 +592,11 @@
                     ctx.drawImage(bgMedia, 0, 0, mw, mh, -coverRadius, -coverRadius, coverRadius * 2, coverRadius * 2); ctx.restore();
                     ctx.restore(); 
           
-                    const lx = 600, baseLy = logicalH / 2, maxWidth = logicalW - lx - 40, gap = 20; 
-                    let activeIdx = -1;
-                    for (let i = 0; i < data.lyricRaw.length; i++) { if (time >= data.lyricRaw[i].time) activeIdx = i; else break; }
-
-                    ctx.textAlign = "left"; ctx.textBaseline = "middle";
-                    const wrapText = (text, maxW) => {
-                        const lines = []; let currentLine = ''; const chars = Array.from(text);
-                        for (let i = 0; i < chars.length; i++) {
-                            let testLine = currentLine + chars[i];
-                            if (ctx.measureText(testLine).width > maxW && currentLine.length > 0) {
-                                if (/[a-zA-Z]/.test(chars[i]) && currentLine.includes(' ')) {
-                                    let lastSpace = currentLine.lastIndexOf(' ');
-                                    lines.push(currentLine.substring(0, lastSpace));
-                                    currentLine = currentLine.substring(lastSpace + 1) + chars[i];
-                                } else { lines.push(currentLine); currentLine = chars[i]; }
-                            } else { currentLine = testLine; }
-                        }
-                        if (currentLine) lines.push(currentLine);
-                        return lines;
-                    };
-
-                    let lyricsBlocks = []; let activeBlockIndex = -1;
-                    for (let offset = -4; offset <= 4; offset++) {
-                        const idx = activeIdx + offset;
-                        if (idx >= 0 && idx < data.lyricRaw.length) {
-                            const isCurrent = offset === 0;
-                            ctx.font = isCurrent ? "bold 36px sans-serif" : "600 26px sans-serif";
-                            const lineHeight = isCurrent ? 48 : 34;
-                            const textLines = wrapText(data.lyricRaw[idx].text, maxWidth);
-                            const blockHeight = (textLines.length - 1) * lineHeight; 
-                            
-                            lyricsBlocks.push({
-                                offset, textLines, isCurrent, lineHeight, blockHeight,
-                                font: ctx.font, color: isCurrent ? "#fff" : "rgba(255,255,255,0.85)",
-                                shadowBlur: isCurrent ? 6 : 4, shadowOffset: isCurrent ? 2 : 1
-                            });
-                            if (isCurrent) activeBlockIndex = lyricsBlocks.length - 1;
-                        }
-                    }
-
-                    if (activeBlockIndex !== -1) {
-                        const activeBlock = lyricsBlocks[activeBlockIndex];
-                        activeBlock.startY = baseLy - (activeBlock.blockHeight / 2);
-                        for (let i = activeBlockIndex + 1; i < lyricsBlocks.length; i++) {
-                            const prev = lyricsBlocks[i-1];
-                            lyricsBlocks[i].startY = prev.startY + prev.blockHeight + gap + (prev.lineHeight / 2) + (lyricsBlocks[i].lineHeight / 2);
-                        }
-                        for (let i = activeBlockIndex - 1; i >= 0; i--) {
-                            const next = lyricsBlocks[i+1];
-                            lyricsBlocks[i].startY = next.startY - lyricsBlocks[i].blockHeight - gap - (next.lineHeight / 2) - (lyricsBlocks[i].lineHeight / 2);
-                        }
-                        for (let block of lyricsBlocks) {
-                            ctx.font = block.font; ctx.fillStyle = block.color;
-                            ctx.shadowColor = "rgba(0,0,0,0.9)"; ctx.shadowBlur = block.shadowBlur;
-                            ctx.shadowOffsetX = block.shadowOffset; ctx.shadowOffsetY = block.shadowOffset;
-                            let lineY = block.startY;
-                            for (let lineText of block.textLines) {
-                                let alpha = 1;
-                                const dist = Math.abs(lineY - baseLy);
-                                if (dist > 230) alpha = Math.max(0, 1 - (dist - 230) / 70); 
-                                if (alpha > 0) { ctx.globalAlpha = alpha; ctx.fillText(lineText, lx, lineY); ctx.globalAlpha = 1.0; }
-                                lineY += block.lineHeight;
-                            }
-                        }
-                    }
+                    const lx = 600, baseLy = logicalH / 2, maxWidth = logicalW - lx - 40, gap = 20;
+                    ctx.textAlign = "left";
+                    ctx.textBaseline = "middle";
+                    if (renderKaraoke) drawKaraokeLyrics(time * 1000, lx, baseLy, maxWidth);
+                    else drawLineLyrics(time, lx, baseLy, maxWidth, gap);
                     
                     ctx.font = "bold 26px sans-serif"; ctx.fillStyle = "#fff"; ctx.textAlign = "center";
                     ctx.shadowColor = "rgba(0,0,0,0.9)"; ctx.shadowBlur = 8;
@@ -358,11 +653,223 @@
     // =================================================================
     // 网页主播放界面
     // =================================================================
+    const lyricTimeRe = /\[(\d+):(\d+)\.(\d{1,3})\]/g;
+    const fallbackLineDuration = 1200;
+
+    function escapeHTML(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => {
+            switch (char) {
+            case '&':
+                return '&amp;';
+            case '<':
+                return '&lt;';
+            case '>':
+                return '&gt;';
+            case '"':
+                return '&quot;';
+            case '\'':
+                return '&#39;';
+            default:
+                return char;
+            }
+        });
+    }
+
+    function lyricTimeToMs(parts) {
+        const minute = Number(parts[1]) || 0;
+        const second = Number(parts[2]) || 0;
+        let ms = String(parts[3] || '0');
+        if (ms.length === 1) ms += '00';
+        if (ms.length === 2) ms += '0';
+        return minute * 60000 + second * 1000 + Number(ms.slice(0, 3));
+    }
+
+    function lyricProgress(nowMs, start, end) {
+        if (nowMs <= start) return 0;
+        if (!Number.isFinite(end) || end <= start) return 1;
+        return Math.max(0, Math.min(1, (nowMs - start) / (end - start)));
+    }
+
+    function parseLyricLine(line) {
+        lyricTimeRe.lastIndex = 0;
+        const matches = Array.from(String(line || '').matchAll(lyricTimeRe));
+        if (matches.length === 0) return null;
+
+        const start = lyricTimeToMs(matches[0]);
+        const words = [];
+        for (let i = 0; i < matches.length; i++) {
+            const textStart = matches[i].index + matches[i][0].length;
+            const textEnd = i + 1 < matches.length ? matches[i + 1].index : line.length;
+            const text = line.slice(textStart, textEnd);
+            if (!text) continue;
+            words.push({
+                start: lyricTimeToMs(matches[i]),
+                end: i + 1 < matches.length ? lyricTimeToMs(matches[i + 1]) : null,
+                text
+            });
+        }
+
+        const text = line.replace(lyricTimeRe, '').trim();
+        return { start, time: start / 1000, words, text, verbatim: matches.length > 1 };
+    }
+
+    function normalizeGroupWords(sourceWords, groupStart, groupEnd, fallbackText) {
+        const words = Array.isArray(sourceWords) && sourceWords.length > 0
+            ? sourceWords
+            : [{ text: fallbackText || '', start: groupStart, end: groupEnd }];
+        return words
+            .map((word, index) => {
+                const start = Number(word?.start);
+                const nextStart = index + 1 < words.length ? Number(words[index + 1]?.start) : NaN;
+                let end = Number(word?.end);
+                const safeStart = Number.isFinite(start) ? start : groupStart;
+                if (!Number.isFinite(end) || end <= safeStart) {
+                    end = Number.isFinite(nextStart) && nextStart > safeStart ? nextStart : groupEnd;
+                }
+                return {
+                    text: String(word?.text || ''),
+                    start: safeStart,
+                    end
+                };
+            })
+            .filter(word => word.text !== '');
+    }
+
+    function normalizeLyricGroups(rawGroups) {
+        return (rawGroups || []).map((group, index, list) => {
+            const start = Number(group?.start || 0);
+            const nextStart = index + 1 < list.length ? Number(list[index + 1]?.start || 0) : 0;
+            const end = nextStart > start ? nextStart : start + fallbackLineDuration;
+            const lines = (group?.lines || []).map((line) => ({
+                ...line,
+                text: String(line?.text || ''),
+                words: normalizeGroupWords(line?.words, start, end, line?.text)
+            }));
+            return {
+                start,
+                end,
+                time: start / 1000,
+                lines
+            };
+        }).filter(group => group.lines.some(line => line.text));
+    }
+
+    function wrapPlainText(ctx, text, maxW) {
+        const lines = [];
+        let currentLine = '';
+        const chars = Array.from(String(text || ''));
+        for (let i = 0; i < chars.length; i++) {
+            const next = currentLine + chars[i];
+            if (ctx.measureText(next).width > maxW && currentLine.length > 0) {
+                if (/[a-zA-Z]/.test(chars[i]) && currentLine.includes(' ')) {
+                    const lastSpace = currentLine.lastIndexOf(' ');
+                    lines.push(currentLine.substring(0, lastSpace));
+                    currentLine = currentLine.substring(lastSpace + 1) + chars[i];
+                } else {
+                    lines.push(currentLine);
+                    currentLine = chars[i];
+                }
+            } else {
+                currentLine = next;
+            }
+        }
+        if (currentLine) lines.push(currentLine);
+        return lines;
+    }
+
+    function wrapWordSegments(ctx, words, maxW) {
+        const lines = [];
+        let currentLine = [];
+        let currentWidth = 0;
+        words.forEach((word) => {
+            const width = ctx.measureText(word.text || '').width;
+            if (currentLine.length > 0 && currentWidth + width > maxW) {
+                lines.push(currentLine);
+                currentLine = [];
+                currentWidth = 0;
+            }
+            currentLine.push(word);
+            currentWidth += width;
+        });
+        if (currentLine.length > 0) lines.push(currentLine);
+        return lines;
+    }
+
+    function createLineOnlyGroups(lyricRaw) {
+        return normalizeLyricGroups((lyricRaw || []).map((item) => ({
+            start: Math.round((Number(item?.time) || 0) * 1000),
+            lines: [{ text: String(item?.text || ''), words: [] }]
+        })));
+    }
+
+    function parseLyrics(raw) {
+        const map = new Map();
+        let hasVerbatim = false;
+        String(raw || '').split(/\r?\n/).forEach((rawLine) => {
+            const line = rawLine.trim();
+            if (!line || /^\[[A-Za-z]+:[^\]]*\]$/.test(line)) return;
+            const parsed = parseLyricLine(line);
+            if (!parsed || !parsed.text) return;
+            hasVerbatim = hasVerbatim || parsed.verbatim;
+            if (!map.has(parsed.start)) {
+                map.set(parsed.start, { start: parsed.start, time: parsed.time, lines: [] });
+            }
+            map.get(parsed.start).lines.push(parsed);
+        });
+
+        const groups = normalizeLyricGroups(Array.from(map.values()).sort((a, b) => a.start - b.start));
+        const hasMultiLang = groups.some(group => group.lines.length > 1);
+        return {
+            type: hasVerbatim || hasMultiLang ? 'karaoke' : 'line',
+            groups
+        };
+    }
+
+    function renderKaraokeWordsHTML(words, fallbackStart, fallbackEnd) {
+        return (words || []).map((word) => [
+            `<span class="vg-word" data-start="${word.start || fallbackStart}" data-end="${word.end || fallbackEnd}" style="--karaoke-progress:0%;">`,
+            `<span class="vg-word-base">${escapeHTML(word.text)}</span>`,
+            `<span class="vg-word-fill">${escapeHTML(word.text)}</span>`,
+            '</span>'
+        ].join('')).join('');
+    }
+
+    function renderKaraokeLineHTML(line, className, group, useWordProgress) {
+        if (!line?.text) return '';
+        const content = useWordProgress && Array.isArray(line.words) && line.words.length > 0
+            ? renderKaraokeWordsHTML(line.words, group.start, group.end)
+            : escapeHTML(line.text);
+        return `<div class="${className}">${content}</div>`;
+    }
+
+    function buildVideoGenLyricURL(songData) {
+        if (window.buildLyricRequestURL) {
+            return window.buildLyricRequestURL(songData, 'lyric', 'auto');
+        }
+
+        const params = new URLSearchParams({
+            id: String(songData?.id || ''),
+            source: String(songData?.source || ''),
+            name: String(songData?.name || ''),
+            artist: String(songData?.artist || ''),
+            album: String(songData?.album || ''),
+            duration: String(songData?.duration || 0),
+            format: 'auto'
+        });
+        const extra = typeof songData?.extra === 'string'
+            ? songData.extra
+            : JSON.stringify(songData?.extra || {});
+        if (extra && extra !== '{}' && extra !== 'null') {
+            params.set('extra', extra);
+        }
+        return `${window.API_ROOT}/lyric?${params.toString()}`;
+    }
+
     window.VideoGen = {
-      data: null, customVisual: null, lyricTimes: [], lyricRaw: [], lastActiveIndex: -1,
+      data: null, customVisual: null, lyricTimes: [], lyricRaw: [], lyricGroups: [], lyricMode: 'line', lastActiveIndex: -1,
       audioCtx: null, analyser: null, sourceNode: null, localSourceNode: null, 
       isPlaying: false, rtCanvas: null, rtCtx: null, animationId: null, isVideoBg: false,
-      resizeObserver: null, isDraggingProgress: false,
+      resizeObserver: null, isDraggingProgress: false, lyricsAnimationId: null,
       
       // 本地音频支持
       isLocalAudio: false, localAudio: null, _currentAudioEl: null, _currentLocalAudioFile: null,
@@ -477,18 +984,18 @@
             this.apTimeHandler = () => this.syncLyrics();
             this.apPlayHandler = () => { 
                 if (!this.isLocalAudio && window.currentPlayingId !== this.data.id) return;
-                this.isPlaying = true; this.updatePlayUI(); this.initAudioContext(); this.startRealtimeVisualizer(); 
+                this.isPlaying = true; this.updatePlayUI(); this.initAudioContext(); this.startRealtimeVisualizer(); this.startLyricsLoop();
                 const b = document.getElementById("vg-bg-video"), c = document.getElementById("vg-cover-video");
                 if(b?.style.display !== 'none') b.play().catch(()=>{}); if(c?.style.display !== 'none') c.play().catch(()=>{});
                 document.getElementById("vg-bg-img")?.classList.add("playing");
             };
             this.apPauseHandler = () => { 
-                this.isPlaying = false; this.updatePlayUI(); this.stopRealtimeVisualizer(); 
+                this.isPlaying = false; this.updatePlayUI(); this.stopRealtimeVisualizer(); this.stopLyricsLoop(); this.syncLyrics();
                 const b = document.getElementById("vg-bg-video"), c = document.getElementById("vg-cover-video");
                 if(b?.style.display !== 'none') b.pause(); if(c?.style.display !== 'none') c.pause();
                 document.getElementById("vg-bg-img")?.classList.remove("playing");
             };
-            this.apEndHandler = () => { this.isPlaying = false; this.updatePlayUI(); this.stopRealtimeVisualizer(); };
+            this.apEndHandler = () => { this.isPlaying = false; this.updatePlayUI(); this.stopRealtimeVisualizer(); this.stopLyricsLoop(); this.syncLyrics(); };
         }
 
         audioEl.addEventListener('timeupdate', this.apTimeHandler);
@@ -574,7 +1081,7 @@
 
         this.reset(); 
         
-        fetch(`${window.API_ROOT}/lyric?id=${encodeURIComponent(songData.id)}&source=${songData.source}`)
+        fetch(buildVideoGenLyricURL(songData))
             .then(r => r.text())
             .then(text => this.parseAndSetLyrics(text));
 
@@ -587,6 +1094,7 @@
 
       close: function () {
         this.stopRealtimeVisualizer();
+        this.stopLyricsLoop();
         this.detachEvents(this._currentAudioEl);
         if (this.isLocalAudio && this.localAudio) this.localAudio.pause();
         if (this.resizeObserver) { this.resizeObserver.disconnect(); this.resizeObserver = null; }
@@ -595,6 +1103,7 @@
       },
 
       reset: function () {
+        this.stopLyricsLoop();
         document.getElementById("vg-status-loading").style.display = "none";
         document.getElementById("vg-status-success").style.display = "none";
         document.getElementById("vg-ui-container").classList.remove("vg-rendering-hide");
@@ -602,36 +1111,54 @@
 
       parseAndSetLyrics: function (text) {
         const box = document.getElementById("vg-lyrics"); box.innerHTML = "";
-        this.lyricTimes = []; this.lyricRaw = [];
-        const lines = text.split("\n"), re = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
-        
-        lines.forEach(line => {
-            const m = line.match(re), c = line.replace(/\[.*?\]/g, "").trim();
-            if (m && c) {
-                const t = parseInt(m[1]) * 60 + parseInt(m[2]) + parseInt(m[3]) / (m[3].length === 2 ? 100 : 1000);
-                this.lyricTimes.push({ time: t, content: c }); this.lyricRaw.push({ time: t, text: c });
-                const d = document.createElement("div"); d.className = "vg-line"; d.textContent = c;
-                d.onclick = () => { 
-                    if (this.isLocalAudio) {
-                        this.localAudio.currentTime = t;
-                        if (this.localAudio.paused) this.localAudio.play();
+        this.lyricTimes = []; this.lyricRaw = []; this.lyricGroups = []; this.lyricMode = 'line'; this.lastActiveIndex = -1;
+
+        const parsed = parseLyrics(text);
+        this.lyricGroups = parsed.groups;
+        this.lyricMode = parsed.type;
+
+        parsed.groups.forEach((group, index) => {
+            const [orig, trans, roma] = group.lines;
+            if (!orig) return;
+
+            const t = group.time;
+            this.lyricTimes.push({ time: t, content: orig.text });
+            this.lyricRaw.push({ time: t, text: orig.text });
+
+            const d = document.createElement("div");
+            d.className = parsed.type === 'karaoke' ? "vg-line vg-line-karaoke" : "vg-line";
+            d.dataset.index = String(index);
+
+            if (parsed.type === 'karaoke') {
+                d.innerHTML = [
+                    renderKaraokeLineHTML(orig, 'vg-line-orig', group, true),
+                    renderKaraokeLineHTML(roma, 'vg-line-roma', group, !!roma?.verbatim),
+                    renderKaraokeLineHTML(trans, 'vg-line-trans', group, !!trans?.verbatim)
+                ].join('');
+            } else {
+                d.textContent = orig.text;
+            }
+
+            d.onclick = () => { 
+                if (this.isLocalAudio) {
+                    this.localAudio.currentTime = t;
+                    if (this.localAudio.paused) this.localAudio.play();
+                } else {
+                    if (window.currentPlayingId === this.data.id) {
+                        if (window.ap && window.ap.audio) { window.ap.seek(t); if (window.ap.audio.paused) window.ap.play(); }
                     } else {
-                        if (window.currentPlayingId === this.data.id) {
-                            if (window.ap && window.ap.audio) { window.ap.seek(t); if (window.ap.audio.paused) window.ap.play(); }
-                        } else {
-                            if (typeof window.playAllAndJumpToId === 'function') {
-                                window.playAllAndJumpToId(this.data.id);
-                                const onCanPlay = () => {
-                                    if (window.ap && window.ap.audio) window.ap.seek(t);
-                                    window.ap.audio.removeEventListener('canplay', onCanPlay);
-                                };
-                                window.ap.audio.addEventListener('canplay', onCanPlay);
-                            }
+                        if (typeof window.playAllAndJumpToId === 'function') {
+                            window.playAllAndJumpToId(this.data.id);
+                            const onCanPlay = () => {
+                                if (window.ap && window.ap.audio) window.ap.seek(t);
+                                window.ap.audio.removeEventListener('canplay', onCanPlay);
+                            };
+                            window.ap.audio.addEventListener('canplay', onCanPlay);
                         }
                     }
-                };
-                box.appendChild(d);
-            }
+                }
+            };
+            box.appendChild(d);
         });
         if (this.lyricTimes.length === 0) box.innerHTML = '<p style="padding-top:100px; color:rgba(255,255,255,0.5);">纯音乐 / 无歌词</p>';
       },
@@ -685,6 +1212,22 @@
           animate();
       },
       stopRealtimeVisualizer: function() { if (this.animationId) cancelAnimationFrame(this.animationId); },
+      startLyricsLoop: function() {
+          if (this.lyricsAnimationId) return;
+          const tick = () => {
+              this.lyricsAnimationId = null;
+              this.syncLyrics();
+              if (!this.isPlaying) return;
+              this.lyricsAnimationId = requestAnimationFrame(tick);
+          };
+          this.lyricsAnimationId = requestAnimationFrame(tick);
+      },
+      stopLyricsLoop: function() {
+          if (this.lyricsAnimationId) {
+              cancelAnimationFrame(this.lyricsAnimationId);
+              this.lyricsAnimationId = null;
+          }
+      },
   
       startRendering: function () {
         if (!this.data) return;
@@ -697,7 +1240,9 @@
             artist: this.data.artist,
             rawCover: this.customVisual || this.data.cover || "https://via.placeholder.com/600",
             isVideoBg: this.isVideoBg,
-            lyricRaw: this.lyricRaw, 
+            lyricRaw: this.lyricRaw,
+            lyricGroups: this.lyricGroups,
+            lyricMode: this.lyricMode,
             customAudioFile: this.isLocalAudio ? this._currentLocalAudioFile : null,
             apiRoot: window.API_ROOT
         };
@@ -756,10 +1301,26 @@
         
         if (this.lyricTimes.length === 0 || this.isUserScrolling) return;
         let active = -1; for (let i = 0; i < this.lyricTimes.length; i++) { if (ct >= this.lyricTimes[i].time) active = i; else break; }
-        if (active !== -1 && active !== this.lastActiveIndex) {
-          const ls = document.querySelectorAll(".vg-line"); ls.forEach(l => l.classList.remove("active"));
+        if (active === -1) return;
+
+        const ls = document.querySelectorAll(".vg-line");
+        if (active !== this.lastActiveIndex) {
+          ls.forEach(l => {
+            l.classList.remove("active");
+          });
           const al = ls[active]; if (al) { al.classList.add("active"); if (!this.isUserScrolling) al.scrollIntoView({ behavior: "smooth", block: "center" }); }
           this.lastActiveIndex = active;
+        }
+
+        if (this.lyricMode === 'karaoke') {
+          const ms = ct * 1000;
+          document.querySelectorAll(".vg-word").forEach(word => {
+            const start = Number(word.dataset.start || 0);
+            const end = Number(word.dataset.end || start + fallbackLineDuration);
+            const progress = lyricProgress(ms, start, end);
+            word.style.setProperty("--karaoke-progress", `${(progress * 100).toFixed(3)}%`);
+            word.classList.toggle("is-active", progress > 0 && progress < 1);
+          });
         }
       },
     };

@@ -52,7 +52,7 @@ func DownloadSongData(song *model.Song, withCover bool, withLyrics bool) (*Downl
 	var lyric string
 	if withLyrics {
 		if lyricFn := GetLyricFunc(normalized.Source); lyricFn != nil {
-			lyric, _ = lyricFn(&model.Song{ID: normalized.ID, Source: normalized.Source, Extra: normalized.Extra})
+			lyric, _ = lyricFn(&normalized)
 		}
 	}
 
