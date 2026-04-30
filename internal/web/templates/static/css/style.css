@@ -727,6 +727,9 @@ body.karaoke-lyrics-active .aplayer .aplayer-lrc p.aplayer-lrc-current {
     .karaoke-lyrics[data-fallback="true"] {
         bottom: 120px;
         width: calc(100vw - 18px);
+        left: 50%;
+        transform: translateX(-50%);
+        margin-left: 0; /* 👈 新增：清除偏移，强制居中 */
         height: auto;
         min-height: 60px;
         padding: 10px 6px;
@@ -735,6 +738,9 @@ body.karaoke-lyrics-active .aplayer .aplayer-lrc p.aplayer-lrc-current {
     body.karaoke-lyrics-active .aplayer.aplayer-fixed .aplayer-lrc {
         bottom: 120px !important;
         width: calc(100vw - 18px) !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        margin-left: 0 !important; /* 👈 核心修复：抵消原版 APlayer 的 5% 左边距干扰 */
         height: auto !important;
         min-height: 60px !important;
         padding: 10px 6px !important;
