@@ -1812,7 +1812,7 @@ function setPlayButtonState(card, isPlaying) {
 
     icon.classList.remove('fa-play', 'fa-stop');
     icon.classList.add(isPlaying ? 'fa-stop' : 'fa-play');
-    btn.title = isPlaying ? '鍋滄' : '鎾斁';
+    btn.title = isPlaying ? '停止' : '播放';
 }
 
 function syncAllPlayButtons() {
@@ -2045,7 +2045,7 @@ function updateCardWithSong(card, song, options = {}) {
         if (isLocalMusicSourceValue(song.source)) {
             coverBtn.href = `${API_ROOT}/local_music/cover?id=${encodeURIComponent(song.id)}&download=1&name=${encodeURIComponent(song.name || '')}&artist=${encodeURIComponent(song.artist || '')}`;
         } else {
-            // 璁╂柊鍗＄墖鐨勫皝闈㈡寜閽缁堣兘澶熶娇鐢ㄦ垨浣跨敤鍗犱綅鍥惧搷搴?
+            // Keep the cover download action usable after source switching.
             let targetCoverUrl = song.cover || 'https://via.placeholder.com/600?text=No+Cover';
             coverBtn.href = `${API_ROOT}/download_cover?url=${encodeURIComponent(targetCoverUrl)}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
         }

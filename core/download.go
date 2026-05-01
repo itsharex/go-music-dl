@@ -120,6 +120,7 @@ func SaveSongToFile(song *model.Song, outDir string, withCover bool, withLyrics 
 		return nil, err
 	}
 
+	result.Filename = fileName
 	result.SavedPath = filePath
 	return result, nil
 }

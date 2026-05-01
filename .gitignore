@@ -21,3 +21,4 @@ winres/desktop_go.winres.json
 *.apk
 *.idsig
 extra-release-assets/
+__debug_bin*

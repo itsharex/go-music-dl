@@ -90,9 +90,53 @@ func corsMiddleware() gin.HandlerFunc {
 }
 
 func setDownloadHeader(c *gin.Context, filename string) {
-	encoded := url.QueryEscape(filename)
-	encoded = strings.ReplaceAll(encoded, "+", "%20")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"; filename*=utf-8''%s", encoded, encoded))
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		filename = "download"
+	}
+	encoded := url.PathEscape(filename)
+	fallback := asciiDownloadFilenameFallback(filename)
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"; filename*=UTF-8''%s", fallback, encoded))
+}
+
+func asciiDownloadFilenameFallback(filename string) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return "download"
+	}
+
+	base := filename
+	ext := ""
+	if dot := strings.LastIndex(filename, "."); dot > 0 && dot < len(filename)-1 {
+		candidateExt := filename[dot:]
+		if candidateExt == asciiDownloadFilenamePart(candidateExt) {
+			base = filename[:dot]
+			ext = candidateExt
+		}
+	}
+
+	fallback := strings.Trim(asciiDownloadFilenamePart(base), " .-_")
+	if fallback == "" {
+		fallback = "download"
+	}
+	return fallback + ext
+}
+
+func asciiDownloadFilenamePart(value string) string {
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '.', r == '-', r == '_', r == ' ':
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func playlistExtraValue(playlist model.Playlist, key string) string {
@@ -297,7 +341,7 @@ func Start(port string, shouldOpenBrowser bool) {
 	api := r.Group(RoutePrefix)
 	api.Static("/videos", videoDir)
 
-	// 鍩虹鍓嶇渚濊禆璺敱
+	// Static assets embedded at build time.
 	api.GET("/icon.png", func(c *gin.Context) { c.FileFromFS("templates/static/images/icon.png", http.FS(templateFS)) })
 	api.GET("/style.css", func(c *gin.Context) { c.FileFromFS("templates/static/css/style.css", http.FS(templateFS)) })
 	api.GET("/videogen.css", func(c *gin.Context) { c.FileFromFS("templates/static/css/videogen.css", http.FS(templateFS)) })

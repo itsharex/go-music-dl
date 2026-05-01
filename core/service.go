@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf16"
 
 	"github.com/dhowden/tag"
 	"github.com/guohuiyuan/music-lib/bilibili"
@@ -839,6 +841,89 @@ func stripID3v2Prefix(audioData []byte) []byte {
 	return audioData[total:]
 }
 
+func id3SynchsafeSize(size int) [4]byte {
+	return [4]byte{
+		byte((size >> 21) & 0x7F),
+		byte((size >> 14) & 0x7F),
+		byte((size >> 7) & 0x7F),
+		byte(size & 0x7F),
+	}
+}
+
+func id3UTF16LEText(value string) []byte {
+	units := utf16.Encode([]rune(value))
+	data := make([]byte, 0, 2+len(units)*2)
+	data = append(data, 0xFF, 0xFE)
+	for _, unit := range units {
+		data = binary.LittleEndian.AppendUint16(data, unit)
+	}
+	return data
+}
+
+func id3TextFramePayload(value string) []byte {
+	payload := []byte{0x01}
+	payload = append(payload, id3UTF16LEText(value)...)
+	return payload
+}
+
+func id3USLTPayload(lyric string) []byte {
+	payload := []byte{0x01, 'e', 'n', 'g'}
+	payload = append(payload, id3UTF16LEText("")...)
+	payload = append(payload, 0x00, 0x00)
+	payload = append(payload, id3UTF16LEText(lyric)...)
+	return payload
+}
+
+func id3APICPayload(coverData []byte, coverMime string) []byte {
+	mimeType := normalizeCoverMime(coverMime)
+	payload := []byte{0x00}
+	payload = append(payload, []byte(mimeType)...)
+	payload = append(payload, 0x00, 0x03, 0x00)
+	payload = append(payload, coverData...)
+	return payload
+}
+
+func id3v23Frame(id string, payload []byte) []byte {
+	if id == "" || len(payload) == 0 {
+		return nil
+	}
+	frame := make([]byte, 0, 10+len(payload))
+	frame = append(frame, []byte(id)...)
+	frame = binary.BigEndian.AppendUint32(frame, uint32(len(payload)))
+	frame = append(frame, 0x00, 0x00)
+	frame = append(frame, payload...)
+	return frame
+}
+
+func embedMP3ID3v23Metadata(audioData []byte, title, artist, lyric string, coverData []byte, coverMime string) ([]byte, error) {
+	var frames bytes.Buffer
+	if title != "" {
+		frames.Write(id3v23Frame("TIT2", id3TextFramePayload(title)))
+	}
+	if artist != "" {
+		frames.Write(id3v23Frame("TPE1", id3TextFramePayload(artist)))
+	}
+	if lyric != "" {
+		frames.Write(id3v23Frame("USLT", id3USLTPayload(lyric)))
+	}
+	if len(coverData) > 0 {
+		frames.Write(id3v23Frame("APIC", id3APICPayload(coverData, coverMime)))
+	}
+
+	frameData := frames.Bytes()
+	if len(frameData) == 0 {
+		return audioData, nil
+	}
+
+	size := id3SynchsafeSize(len(frameData))
+	out := make([]byte, 0, 10+len(frameData)+len(audioData))
+	out = append(out, 'I', 'D', '3', 0x03, 0x00, 0x00)
+	out = append(out, size[:]...)
+	out = append(out, frameData...)
+	out = append(out, stripID3v2Prefix(audioData)...)
+	return out, nil
+}
+
 func normalizeCoverMime(coverMime string) string {
 	coverMime = strings.TrimSpace(strings.ToLower(coverMime))
 	if coverMime == "" {
@@ -920,6 +1005,10 @@ func EmbedSongMetadata(audioData []byte, song *model.Song, lyric string, coverDa
 	}
 
 	_, _ = tag.ReadFrom(bytes.NewReader(audioData))
+
+	if ext == "mp3" {
+		return embedMP3ID3v23Metadata(audioData, title, artist, lyric, coverData, normalizeCoverMime(coverMime))
+	}
 
 	return embedAudioMetadataByFFmpeg(audioData, ext, title, artist, lyric, coverData, normalizeCoverMime(coverMime))
 }
