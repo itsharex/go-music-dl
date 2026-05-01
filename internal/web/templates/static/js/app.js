@@ -1502,8 +1502,36 @@ const KaraokeLyrics = (() => {
         };
     }
 
+    function looksLikeRomajiLine(line) {
+        const text = String(line?.text || '').trim();
+        if (!text) return false;
+        const latinCount = (text.match(/[A-Za-z]/g) || []).length;
+        const cjkOrKanaCount = (text.match(/[\u3040-\u30ff\u3400-\u9fff]/g) || []).length;
+        return latinCount > 0 && latinCount >= cjkOrKanaCount;
+    }
+
+    function splitGroupLines(lines) {
+        const [orig, ...extras] = lines || [];
+        let roma = null;
+        let trans = null;
+        extras.forEach((line) => {
+            if (!roma && looksLikeRomajiLine(line)) {
+                roma = line;
+                return;
+            }
+            if (!trans) {
+                trans = line;
+                return;
+            }
+            if (!roma) {
+                roma = line;
+            }
+        });
+        return { orig, roma, trans };
+    }
+
     function renderGroup(group, index) {
-        const [orig, trans, roma] = group.lines;
+        const { orig, roma, trans } = splitGroupLines(group.lines);
         const renderWords = (words, fallbackStart, fallbackEnd) => (words || [])
             .map(word => [
                 `<span class="karaoke-word" data-start="${word.start || fallbackStart}" data-end="${word.end || fallbackEnd}" style="--karaoke-progress:0%;">`,

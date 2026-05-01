@@ -120,6 +120,34 @@
             }).filter(group => group.lines.some(line => line.text));
         }
 
+        function looksLikeRomajiLineWorker(line) {
+            const text = String(line?.text || '').trim();
+            if (!text) return false;
+            const latinCount = (text.match(/[A-Za-z]/g) || []).length;
+            const cjkOrKanaCount = (text.match(/[\u3040-\u30ff\u3400-\u9fff]/g) || []).length;
+            return latinCount > 0 && latinCount >= cjkOrKanaCount;
+        }
+
+        function splitLyricGroupLinesWorker(lines) {
+            const [orig, ...extras] = lines || [];
+            let roma = null;
+            let trans = null;
+            extras.forEach((line) => {
+                if (!roma && looksLikeRomajiLineWorker(line)) {
+                    roma = line;
+                    return;
+                }
+                if (!trans) {
+                    trans = line;
+                    return;
+                }
+                if (!roma) {
+                    roma = line;
+                }
+            });
+            return { orig, roma, trans };
+        }
+
         function wrapPlainTextWorker(ctx, text, maxW) {
             const lines = [];
             let currentLine = '';
@@ -481,7 +509,7 @@
                         if (idx < 0 || idx >= lyricGroups.length) continue;
 
                         const group = lyricGroups[idx];
-                        const [orig, trans, roma] = group.lines;
+                        const { orig, roma, trans } = splitLyricGroupLinesWorker(group.lines);
                         if (!orig) continue;
 
                         const isCurrent = offset === 0;
@@ -790,6 +818,34 @@
                 lines
             };
         }).filter(group => group.lines.some(line => line.text));
+    }
+
+    function looksLikeRomajiLine(line) {
+        const text = String(line?.text || '').trim();
+        if (!text) return false;
+        const latinCount = (text.match(/[A-Za-z]/g) || []).length;
+        const cjkOrKanaCount = (text.match(/[\u3040-\u30ff\u3400-\u9fff]/g) || []).length;
+        return latinCount > 0 && latinCount >= cjkOrKanaCount;
+    }
+
+    function splitLyricGroupLines(lines) {
+        const [orig, ...extras] = lines || [];
+        let roma = null;
+        let trans = null;
+        extras.forEach((line) => {
+            if (!roma && looksLikeRomajiLine(line)) {
+                roma = line;
+                return;
+            }
+            if (!trans) {
+                trans = line;
+                return;
+            }
+            if (!roma) {
+                roma = line;
+            }
+        });
+        return { orig, roma, trans };
     }
 
     function wrapPlainText(ctx, text, maxW) {
@@ -1156,7 +1212,7 @@
         this.lyricMode = parsed.type;
 
         parsed.groups.forEach((group, index) => {
-            const [orig, trans, roma] = group.lines;
+            const { orig, roma, trans } = splitLyricGroupLines(group.lines);
             if (!orig) return;
 
             const t = group.time;
