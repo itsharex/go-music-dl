@@ -354,6 +354,12 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		durStr := c.Query("duration")
 		extra := parseSongExtraQuery(c.Query("extra"))
 
+		if isLocalMusicSource(src) {
+			payload, _ := inspectLocalMusicFile(id, durStr)
+			c.JSON(200, payload)
+			return
+		}
+
 		var urlStr string
 		var err error
 
@@ -465,7 +471,6 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		noRangeRequest := strings.TrimSpace(c.GetHeader("Range")) == ""
 		embedMeta := c.Query("embed") == "1" && noRangeRequest
 		saveLocal := c.Query("save_local") == "1" && noRangeRequest
-		settings := core.GetWebSettings()
 		extra := parseSongExtraQuery(c.Query("extra"))
 
 		if id == "" || source == "" {
@@ -479,8 +484,14 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			artist = "Unknown"
 		}
 
+		if isLocalMusicSource(source) {
+			serveLocalMusicDownload(c, id, saveLocal)
+			return
+		}
+
 		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist, Cover: coverURL, Extra: extra}
 		baseFilename := fmt.Sprintf("%s - %s", name, artist)
+		settings := core.GetWebSettings()
 
 		if saveLocal {
 			result, err := core.SaveSongToFile(tempSong, settings.DownloadDir, embedMeta, embedMeta)

@@ -124,4 +124,30 @@
         </div>
     </div>
 </div>
+<div id="localMusicModal" class="modal-overlay" style="z-index: 1006;">
+    <div class="modal local-music-modal">
+        <div class="modal-header">
+            <div>
+                <h3>添加本地音乐</h3>
+                <p class="local-music-subtitle">自动读取本地下载目录，可直接上传音频文件。</p>
+            </div>
+            <div class="modal-close" onclick="closeLocalMusicModal()"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+        <div class="modal-body">
+            <div class="local-music-toolbar">
+                <div class="local-music-dir" id="localMusicDir">下载目录：-</div>
+                <div class="local-music-target" id="localMusicTargetWrap" style="display:none;">
+                    <label for="localMusicCollectionSelect">添加到</label>
+                    <select id="localMusicCollectionSelect" onchange="selectLocalMusicCollection(this.value)"></select>
+                </div>
+                <label class="btn-pill btn-pill-primary local-upload-btn" for="localMusicUploadInput">
+                    <i class="fa-solid fa-upload"></i> 上传音乐
+                </label>
+                <input id="localMusicUploadInput" type="file" accept=".mp3,.flac,.m4a,.ogg,.wav,.wma,.aac,audio/*" onchange="uploadLocalMusicFile(this)" hidden>
+            </div>
+            <div id="localMusicHint" class="local-music-hint">正在加载本地音乐...</div>
+            <div id="localMusicList" class="local-music-list"></div>
+        </div>
+    </div>
+</div>
 {{end}}

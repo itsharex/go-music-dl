@@ -370,14 +370,18 @@ func loadSavedSongs(collectionID uint) ([]model.Song, error) {
 
 	songs := make([]model.Song, 0, len(savedSongs))
 	for _, ss := range savedSongs {
+		extra := decodeSongExtraMap(ss.Extra)
 		songs = append(songs, model.Song{
 			ID:       ss.SongID,
 			Source:   ss.Source,
 			Name:     ss.Name,
 			Artist:   ss.Artist,
+			Album:    extraMapValue(extra, "album"),
+			AlbumID:  extraMapValue(extra, "album_id"),
+			Link:     extraMapValue(extra, "link"),
 			Cover:    ss.Cover,
 			Duration: ss.Duration,
-			Extra:    decodeSongExtraMap(ss.Extra),
+			Extra:    extra,
 		})
 	}
 	return songs, nil
@@ -480,6 +484,13 @@ func decodeSongExtraMap(raw string) map[string]string {
 	return extra
 }
 
+func extraMapValue(extra map[string]string, key string) string {
+	if extra == nil {
+		return ""
+	}
+	return strings.TrimSpace(extra[key])
+}
+
 func decodeSongExtraObject(raw string) interface{} {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -573,6 +584,7 @@ func collectionSongsJSON(collection *Collection) ([]gin.H, error) {
 
 	resp := make([]gin.H, 0, len(savedSongs))
 	for _, s := range savedSongs {
+		extraMap := decodeSongExtraMap(s.Extra)
 		resp = append(resp, gin.H{
 			"db_id":         s.ID,
 			"collection_id": s.CollectionID,
@@ -581,8 +593,11 @@ func collectionSongsJSON(collection *Collection) ([]gin.H, error) {
 			"extra":         decodeSongExtraObject(s.Extra),
 			"name":          s.Name,
 			"artist":        s.Artist,
+			"album":         extraMapValue(extraMap, "album"),
+			"album_id":      extraMapValue(extraMap, "album_id"),
 			"cover":         s.Cover,
 			"duration":      s.Duration,
+			"link":          extraMapValue(extraMap, "link"),
 			"added_at":      s.AddedAt,
 		})
 	}

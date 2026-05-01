@@ -339,6 +339,7 @@ func Start(port string, shouldOpenBrowser bool) {
 
 	RegisterMusicRoutes(api)
 	RegisterCollectionRoutes(api)
+	RegisterLocalMusicRoutes(api)
 	RegisterVideogenRoutes(api, videoDir)
 
 	listenAddr := ":" + port

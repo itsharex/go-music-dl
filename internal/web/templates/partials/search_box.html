@@ -6,7 +6,7 @@
         <div class="search-type-switch">
             <label class="type-option">
                 <input type="radio" name="type" value="song"
-                    {{ if or (eq .SearchType "song") (not .SearchType) }}checked{{ end }}
+                    {{ if or (eq .SearchType "song") (eq .SearchType "local_music") (not .SearchType) }}checked{{ end }}
                     onchange="toggleSearchType(this.value)">
                 <span>单曲搜索</span>
             </label>
@@ -36,6 +36,9 @@
             </button>
             <button type="button" class="btn-pill btn-pill-fav" onclick="openCollectionManager()">
                 <i class="fa-solid fa-folder-open"></i> 我的自制歌单
+            </button>
+            <button type="button" class="btn-pill btn-pill-fav" onclick="openLocalMusicPage()">
+                <i class="fa-solid fa-music"></i> 本地音乐
             </button>
         </div>
 

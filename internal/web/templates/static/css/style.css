@@ -332,6 +332,30 @@ body.batch-mode .song-card { padding-left: 10px; }
 }
 .btn-save { width: 100%; padding: 12px; background: var(--primary-gradient); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; margin-top: 10px; font-size: 15px;}
 
+.local-music-modal { max-width: 760px; }
+.local-music-subtitle { margin: 4px 0 0; color: var(--text-sub); font-size: 12px; }
+.local-music-toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; }
+.local-music-dir { flex: 1; min-width: 220px; padding: 9px 12px; border-radius: 10px; background: #f8fafc; color: var(--text-sub); font-size: 12px; border: 1px solid #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-music-target { min-width: 180px; }
+.local-music-target label { display: block; margin-bottom: 4px; color: var(--text-sub); font-size: 11px; font-weight: 700; }
+.local-music-target select { width: 100%; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; color: var(--text-main); outline: none; }
+.local-music-target select:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12); }
+.local-upload-btn { border: none; white-space: nowrap; }
+.local-music-hint { padding: 14px; border-radius: 12px; background: #f8fafc; color: var(--text-sub); font-size: 13px; text-align: center; border: 1px dashed #cbd5e1; margin-bottom: 12px; }
+.local-music-hint.error { color: #e53e3e; background: #fff5f5; border-color: #fed7d7; }
+.local-music-list { display: flex; flex-direction: column; gap: 10px; }
+.local-music-item { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; transition: all 0.2s ease; }
+.local-music-item:hover { border-color: #10b981; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.12); }
+.local-music-cover { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #d1fae5 0%, #ecfeff 100%); color: #059669; font-size: 20px; }
+.local-music-main { min-width: 0; }
+.local-music-title { font-size: 15px; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.local-music-meta { margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; color: var(--text-sub); font-size: 12px; }
+.local-music-file { margin-top: 5px; color: #94a3b8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.local-music-missing { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 2px 6px; border-radius: 999px; }
+.local-music-add { border: none; min-width: 86px; justify-content: center; }
+.local-music-add.is-added { background: #f1f5f9; color: #64748b; cursor: default; }
+.meta-link-disabled { color: inherit; }
+
 .collection-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px; transition: all 0.2s; background: #faf8f8; cursor: pointer;}
 .collection-item:hover { border-color: #10b981; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15); }
 
@@ -668,6 +692,13 @@ body.karaoke-lyrics-active .aplayer .aplayer-lrc p.aplayer-lrc-current {
     .btn-circle { width: 34px; height: 34px; font-size: 13px; }
     .settings-float { top: 15px; right: 15px; width: 36px; height: 36px; }
     .modal { width: 92%; max-height: 85vh; padding: 20px; }
+    .local-music-toolbar { align-items: stretch; }
+    .local-music-dir { min-width: 0; width: 100%; }
+    .local-music-target { width: 100%; }
+    .local-upload-btn { width: 100%; justify-content: center; box-sizing: border-box; }
+    .local-music-item { grid-template-columns: 42px minmax(0, 1fr); }
+    .local-music-cover { width: 42px; height: 42px; }
+    .local-music-add { grid-column: 1 / -1; width: 100%; }
     .pagination-bar { gap: 8px; }
     .pagination-text { font-size: 12px; }
     .pagination-shortcut-hint { font-size: 11px; padding: 3px 8px; }

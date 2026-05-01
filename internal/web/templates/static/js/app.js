@@ -5,6 +5,14 @@ const WEB_SETTINGS_KEY = 'musicdl:web_settings';
 const INSPECT_REQUEST_DELAY_MS = 100;
 const DEFAULT_WEB_PAGE_SIZE = 50;
 const DEFAULT_CLI_PAGE_SIZE = 50;
+const LOCAL_MUSIC_SOURCE = 'local';
+const LEGACY_LOCAL_MUSIC_SOURCE = 'local-file';
+
+function isLocalMusicSourceValue(source) {
+    const value = String(source || '').trim();
+    return value === LOCAL_MUSIC_SOURCE || value === LEGACY_LOCAL_MUSIC_SOURCE;
+}
+
 let webSettings = {
     embedDownload: false,
     downloadToLocal: false,
@@ -825,6 +833,7 @@ function songFromCard(card) {
 }
 
 function inspectSong(card) {
+    if (!card) return;
     const id = card.dataset.id;
     const source = card.dataset.source;
     const duration = card.dataset.duration;
@@ -842,8 +851,13 @@ function inspectSong(card) {
     fetch(`${API_ROOT}/inspect?${params.toString()}`)
         .then(r => r.json())
         .then(data => {
-            const sizeTag = document.getElementById(`size-${id}`);
-            const bitrateTag = document.getElementById(`bitrate-${id}`);
+            if (data && data.song && typeof data.song === 'object') {
+                updateCardWithSong(card, data.song, { inspect: false });
+            }
+
+            const currentId = card.dataset.id || id;
+            const sizeTag = document.getElementById(`size-${currentId}`) || card.querySelector('[id^="size-"]');
+            const bitrateTag = document.getElementById(`bitrate-${currentId}`) || card.querySelector('[id^="bitrate-"]');
 
             if (data.valid) {
                 if (sizeTag) {
@@ -1911,6 +1925,15 @@ function renderArtistLineHTML(song) {
     const artists = splitArtistTokens(song.artist || '');
     const parts = ['<i class="fa-regular fa-user artist-icon"></i>'];
 
+    if (isLocalMusicSourceValue(song.source)) {
+        parts.push(`<span>${escapeHTML(song.artist || '未知歌手')}</span>`);
+        if (song.album) {
+            parts.push('<span class="meta-separator">&middot;</span>');
+            parts.push(`<span class="meta-link-disabled album-link">${escapeHTML(song.album)}</span>`);
+        }
+        return parts.join('');
+    }
+
     if (artists.length > 0) {
         artists.forEach((artist, index) => {
             if (index > 0) {
@@ -1934,8 +1957,10 @@ function renderArtistLineHTML(song) {
     return parts.join('');
 }
 
-function updateCardWithSong(card, song) {
+function updateCardWithSong(card, song, options = {}) {
+    if (!card || !song) return;
     const oldId = card.dataset.id; 
+    const shouldInspect = options.inspect !== false;
 
     card.dataset.id = song.id;
     card.dataset.source = song.source;
@@ -1961,8 +1986,13 @@ function updateCardWithSong(card, song) {
         artistLine.innerHTML = renderArtistLineHTML(song);
     }
 
-    const sourceTag = card.querySelector('.tag-src');
-    if (sourceTag) sourceTag.textContent = song.source;
+    const sourceTag = card.querySelector('.tag-src, .tag-local');
+    if (sourceTag) {
+        const isLocal = isLocalMusicSourceValue(song.source);
+        sourceTag.textContent = isLocal ? '本地' : song.source;
+        sourceTag.classList.toggle('tag-local', isLocal);
+        sourceTag.classList.toggle('tag-src', !isLocal);
+    }
 
     const durationTag = card.querySelector('.tag-duration');
     if (durationTag) {
@@ -2035,7 +2065,9 @@ function updateCardWithSong(card, song) {
     }
 
     syncAllPlayButtons();
-    queueInspectSong(card);
+    if (shouldInspect) {
+        queueInspectSong(card);
+    }
     syncSongToAPlayer(oldId, song);
     if (currentPlayingId === song.id) {
         syncMediaSession();
@@ -2194,6 +2226,7 @@ function updateBatchToolbar() {
     const selectAllCb = document.getElementById('select-all-checkbox');
     const batchSwitch = document.getElementById('btn-batch-switch');
     const batchDl = document.getElementById('btn-batch-dl');
+    const batchDeleteLocal = document.getElementById('btn-batch-delete-local');
     
     if(document.getElementById('selected-count')) {
         document.getElementById('selected-count').textContent = count;
@@ -2207,9 +2240,11 @@ function updateBatchToolbar() {
     if (count > 0) {
         if(batchSwitch) batchSwitch.disabled = false;
         if(batchDl) batchDl.disabled = false;
+        if(batchDeleteLocal) batchDeleteLocal.disabled = false;
     } else {
         if(batchSwitch) batchSwitch.disabled = true;
         if(batchDl) batchDl.disabled = true;
+        if(batchDeleteLocal) batchDeleteLocal.disabled = true;
     }
     
     document.querySelectorAll('.song-card').forEach(card => card.classList.remove('selected'));
@@ -2348,6 +2383,76 @@ async function batchDownload() {
     }
 }
 
+async function deleteLocalMusic(trackId) {
+    const id = String(trackId || '').trim();
+    if (!id) {
+        throw new Error('缺少本地音乐 ID');
+    }
+
+    const response = await fetch(`${API_ROOT}/local_music?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload || payload.error) {
+        throw new Error((payload && payload.error) || '删除失败');
+    }
+    return payload;
+}
+
+async function batchDeleteLocalMusic() {
+    const songs = getSelectedSongs().filter(song => isLocalMusicSourceValue(song.source));
+    if (songs.length === 0) return;
+
+    if (!confirm(`准备删除 ${songs.length} 首本地音乐文件。\n删除后文件会从本地下载目录移除，且不可恢复。`)) {
+        return;
+    }
+
+    const batchDelete = document.getElementById('btn-batch-delete-local');
+    const originalHTML = batchDelete ? batchDelete.innerHTML : '';
+    if (batchDelete) {
+        batchDelete.disabled = true;
+        batchDelete.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 删除中';
+    }
+
+    let success = 0;
+    const failures = [];
+    const deletedIds = new Set();
+
+    try {
+        for (const song of songs) {
+            try {
+                await deleteLocalMusic(song.id);
+                success++;
+                deletedIds.add(song.id);
+            } catch (error) {
+                failures.push({
+                    song,
+                    reason: (error && error.message) ? error.message : '删除失败'
+                });
+            }
+        }
+
+        if (currentPlayingId && deletedIds.has(currentPlayingId)) {
+            try {
+                ap?.pause();
+                ap?.list?.clear();
+            } catch (_) {}
+            currentPlayingId = null;
+            highlightCard(null);
+        }
+
+        let message = `批量删除完成，成功 ${success}/${songs.length}`;
+        message += buildBatchFailureMessage(failures, '失败');
+        alert(message);
+        await refreshCurrentPageContent({ scroll: false });
+    } finally {
+        if (batchDelete) {
+            batchDelete.innerHTML = originalHTML;
+        }
+        updateBatchToolbar();
+    }
+}
+
 function batchSwitchSource() {
     const checkedBoxes = document.querySelectorAll('.song-checkbox:checked');
     if (checkedBoxes.length === 0) return;
@@ -2374,6 +2479,271 @@ function batchSwitchSource() {
 // ==========================================
 
 let pendingFavSong = null;
+let activeLocalMusicCollectionId = '';
+
+function localMusicElements() {
+    return {
+        modal: document.getElementById('localMusicModal'),
+        list: document.getElementById('localMusicList'),
+        hint: document.getElementById('localMusicHint'),
+        dir: document.getElementById('localMusicDir'),
+        targetWrap: document.getElementById('localMusicTargetWrap'),
+        targetSelect: document.getElementById('localMusicCollectionSelect'),
+        input: document.getElementById('localMusicUploadInput')
+    };
+}
+
+function setLocalMusicHint(message, isError = false) {
+    const { hint } = localMusicElements();
+    if (!hint) return;
+    hint.textContent = message || '';
+    hint.classList.toggle('error', !!isError);
+    hint.style.display = message ? 'block' : 'none';
+}
+
+async function openLocalMusicModal(collectionId = '') {
+    activeLocalMusicCollectionId = String(collectionId || '').trim();
+    const { modal, list, dir, targetWrap } = localMusicElements();
+    if (!modal) return;
+
+    if (list) list.innerHTML = '';
+    if (dir) dir.textContent = `下载目录：${webSettings.downloadDir || '-'}`;
+    setLocalMusicHint('正在加载本地音乐...');
+    modal.style.display = 'flex';
+
+    if (activeLocalMusicCollectionId) {
+        if (targetWrap) targetWrap.style.display = 'none';
+    } else {
+        if (targetWrap) targetWrap.style.display = 'block';
+        const loaded = await loadLocalMusicCollections();
+        if (!loaded) return;
+    }
+
+    refreshLocalMusicList();
+}
+
+function closeLocalMusicModal() {
+    const { modal } = localMusicElements();
+    if (modal) modal.style.display = 'none';
+}
+
+async function loadLocalMusicCollections() {
+    const { targetSelect, list } = localMusicElements();
+    if (!targetSelect) return false;
+
+    try {
+        const response = await fetch(API_ROOT + '/collections');
+        const collections = await response.json().catch(() => []);
+        if (!response.ok || !Array.isArray(collections)) {
+            throw new Error('歌单列表加载失败');
+        }
+
+        targetSelect.innerHTML = '';
+        collections.forEach(col => {
+            const option = document.createElement('option');
+            option.value = String(col.id || '');
+            option.textContent = col.name || `歌单 ${col.id}`;
+            targetSelect.appendChild(option);
+        });
+
+        if (collections.length === 0) {
+            activeLocalMusicCollectionId = '';
+            if (list) list.innerHTML = '';
+            setLocalMusicHint('请先新建一个自制歌单，再添加本地音乐。');
+            return false;
+        }
+
+        activeLocalMusicCollectionId = String(collections[0].id || '');
+        targetSelect.value = activeLocalMusicCollectionId;
+        return true;
+    } catch (error) {
+        activeLocalMusicCollectionId = '';
+        if (list) list.innerHTML = '';
+        setLocalMusicHint(error.message || '歌单列表加载失败', true);
+        return false;
+    }
+}
+
+function selectLocalMusicCollection(collectionId) {
+    activeLocalMusicCollectionId = String(collectionId || '').trim();
+    if (!activeLocalMusicCollectionId) {
+        setLocalMusicHint('请选择一个目标歌单。');
+        return;
+    }
+    setLocalMusicHint('正在加载本地音乐...');
+    refreshLocalMusicList();
+}
+
+async function refreshLocalMusicList() {
+    const { list, dir } = localMusicElements();
+    if (!list) return;
+    if (!activeLocalMusicCollectionId) {
+        list.innerHTML = '';
+        setLocalMusicHint('请选择一个目标歌单。');
+        return;
+    }
+
+    const params = new URLSearchParams({ collection_id: activeLocalMusicCollectionId });
+    try {
+        const response = await fetch(`${API_ROOT}/local_music?${params.toString()}`);
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload || payload.error) {
+            throw new Error((payload && payload.error) || '加载失败');
+        }
+        if (dir) {
+            dir.textContent = `下载目录：${payload.download_dir || webSettings.downloadDir || '-'}`;
+        }
+        renderLocalMusicList(payload);
+    } catch (error) {
+        list.innerHTML = '';
+        setLocalMusicHint(error.message || '加载本地音乐失败', true);
+    }
+}
+
+function localMusicMissingText(track) {
+    const labels = { title: '标题', artist: '歌手', album: '专辑' };
+    const missing = Array.isArray(track?.missing) ? track.missing : [];
+    if (missing.length === 0) return '';
+    return `缺少${missing.map(key => labels[key] || key).join('、')}`;
+}
+
+function renderLocalMusicList(payload) {
+    const { list } = localMusicElements();
+    if (!list) return;
+
+    const tracks = Array.isArray(payload.tracks) ? payload.tracks : [];
+    list.innerHTML = '';
+
+    if (!payload.exists) {
+        setLocalMusicHint('下载目录还不存在。上传音乐后会自动创建该目录。');
+        return;
+    }
+    if (tracks.length === 0) {
+        setLocalMusicHint('下载目录里还没有支持的音频文件，可上传 mp3、flac、m4a、ogg、wav、wma、aac。');
+        return;
+    }
+
+    setLocalMusicHint('');
+    tracks.forEach(track => {
+        const item = document.createElement('div');
+        item.className = 'local-music-item';
+
+        const title = track.name || track.filename || '未命名音乐';
+        const artist = track.artist || '未知歌手';
+        const album = track.album || '未知专辑';
+        const sizeText = track.size_text || '-';
+        const missingText = localMusicMissingText(track);
+
+        item.innerHTML = `
+            <div class="local-music-cover"><i class="fa-solid fa-music"></i></div>
+            <div class="local-music-main">
+                <div class="local-music-title" title="${escapeHTML(title)}">${escapeHTML(title)}</div>
+                <div class="local-music-meta">
+                    <span>${escapeHTML(artist)}</span>
+                    <span>·</span>
+                    <span>${escapeHTML(album)}</span>
+                    <span>·</span>
+                    <span>${escapeHTML(sizeText)}</span>
+                    ${missingText ? `<span class="local-music-missing">${escapeHTML(missingText)}</span>` : ''}
+                </div>
+                <div class="local-music-file" title="${escapeHTML(track.rel_path || track.filename || '')}">
+                    ${escapeHTML(track.rel_path || track.filename || '')}
+                </div>
+            </div>
+            <button type="button" class="btn-pill btn-pill-primary local-music-add ${track.already_added ? 'is-added' : ''}" ${track.already_added ? 'disabled' : ''}>
+                <i class="fa-solid ${track.already_added ? 'fa-check' : 'fa-plus'}"></i> ${track.already_added ? '已添加' : '添加'}
+            </button>
+        `;
+
+        const btn = item.querySelector('.local-music-add');
+        if (btn && !track.already_added) {
+            btn.onclick = () => addLocalMusicToCollection(track.id, btn);
+        }
+        list.appendChild(item);
+    });
+}
+
+async function uploadLocalMusicFile(input) {
+    if (!input || !input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    setLocalMusicHint(`正在上传：${file.name}`);
+
+    try {
+        const response = await fetch(`${API_ROOT}/local_music/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload || payload.error) {
+            throw new Error((payload && payload.error) || '上传失败');
+        }
+        input.value = '';
+        await refreshLocalMusicList();
+    } catch (error) {
+        setLocalMusicHint(error.message || '上传失败', true);
+    }
+}
+
+async function uploadLocalMusicForPage(input) {
+    if (!input || !input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch(`${API_ROOT}/local_music/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload || payload.error) {
+            throw new Error((payload && payload.error) || '上传失败');
+        }
+        input.value = '';
+        await refreshCurrentPageContent({ scroll: false });
+    } catch (error) {
+        input.value = '';
+        alert(error.message || '上传失败');
+    }
+}
+
+async function addLocalMusicToCollection(trackId, btn) {
+    if (!activeLocalMusicCollectionId || !trackId) return;
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 添加中';
+    }
+
+    try {
+        const response = await fetch(`${API_ROOT}/collections/${activeLocalMusicCollectionId}/local_music`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: trackId })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload || payload.error) {
+            throw new Error((payload && payload.error) || '添加失败');
+        }
+
+        if (btn) {
+            btn.classList.add('is-added');
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> 已添加';
+        }
+        await refreshCurrentPageContent({ scroll: false });
+        await refreshLocalMusicList();
+    } catch (error) {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-plus"></i> 添加';
+        }
+        alert(error.message || '添加失败');
+    }
+}
 
 function playAllSongs() {
     const firstPlayBtn = document.querySelector('.song-card .btn-play');
@@ -2386,6 +2756,10 @@ function playAllSongs() {
 
 function openCollectionManager() {
     navigateTo(API_ROOT + '/my_collections');
+}
+
+function openLocalMusicPage() {
+    navigateTo(API_ROOT + '/local_music_page');
 }
 
 function showEditCollectionModal(id = '', name = '', desc = '', cover = '') {

@@ -1,9 +1,12 @@
 {{define "song_list"}}
-{{ if .Result }}
+{{ if or .Result .ColID (eq .SearchType "local_music") }}
+{{ $isLocalMusicPage := eq .SearchType "local_music" }}
     <div class="list-header">
         <div>
             {{ if .ColID }}
             <span class="result-count" style="font-size: 16px;"><i class="fa-solid fa-folder-open"></i> 正在查看: <span style="color:#10b981; margin-left: 5px;">{{ .ColName }}</span>（共 {{ .TotalCount }} 首）</span>
+            {{ else if eq .SearchType "local_music" }}
+            <span class="result-count"><i class="fa-solid fa-music"></i> 本地音乐（共 <span class="count">{{ .TotalCount }}</span> 首）</span>
             {{ else }}
             <span class="result-count"><i class="fa-solid fa-music"></i> 找到 <span class="count">{{ .TotalCount }}</span> 首歌曲</span>
             {{ if .PlaylistLink }}
@@ -35,6 +38,12 @@
                 <i class="fa-solid fa-download"></i> 导入本地
             </button>
             {{ end }}
+            {{ if eq .SearchType "local_music" }}
+            <input id="localMusicPageUploadInput" type="file" accept=".mp3,.flac,.m4a,.ogg,.wav,.wma,.aac,audio/*" onchange="uploadLocalMusicForPage(this)" hidden>
+            <button type="button" class="ctrl-btn primary" onclick="document.getElementById('localMusicPageUploadInput')?.click()">
+                <i class="fa-solid fa-upload"></i> 上传本地音乐
+            </button>
+            {{ end }}
             <button type="button" class="ctrl-btn primary" onclick="playAllSongs()">
                 <i class="fa-solid fa-play"></i> 播放全部
             </button>
@@ -44,23 +53,31 @@
         </div>
     </div>
 
-    <div class="batch-toolbar" id="batch-toolbar" data-current-page="{{ .Page }}" data-total-pages="{{ .TotalPages }}" data-total-count="{{ .TotalCount }}" data-page-size="{{ .PageSize }}">
+    <div class="batch-toolbar" id="batch-toolbar" data-current-page="{{ .Page }}" data-total-pages="{{ .TotalPages }}" data-total-count="{{ .TotalCount }}" data-page-size="{{ .PageSize }}" data-local-music="{{ if $isLocalMusicPage }}true{{ else }}false{{ end }}">
         <div class="batch-info">
             <div>
                 <label><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)"> 全选</label>
                 <span style="margin-left: 5px; color: #718096; font-size:12px;">已选 <span id="selected-count" style="color: #10b981; font-weight: bold;">0</span></span>
             </div>
+            {{ if not $isLocalMusicPage }}
             <button class="btn-pill btn-pill-warn" onclick="selectInvalidSongs()">
                 <i class="fa-solid fa-triangle-exclamation"></i> 选择无效
             </button>
+            {{ end }}
         </div>
         <div class="batch-actions">
+            {{ if $isLocalMusicPage }}
+            <button class="btn-pill btn-pill-warn" id="btn-batch-delete-local" onclick="batchDeleteLocalMusic()" disabled>
+                <i class="fa-solid fa-trash"></i> 批量删除
+            </button>
+            {{ else }}
             <button class="btn-pill btn-pill-switch" id="btn-batch-switch" onclick="batchSwitchSource()" disabled>
                 <i class="fa-solid fa-arrows-rotate"></i> 批量换源
             </button>
             <button class="btn-pill btn-pill-dl" id="btn-batch-dl" onclick="batchDownload()" disabled>
                 <i class="fa-solid fa-download"></i> 批量下载
             </button>
+            {{ end }}
         </div>
     </div>
 
@@ -69,6 +86,7 @@
         {{ $song := . }}
         {{ $artists := artistTokens .Artist }}
         {{ $albumID := albumID . }}
+        {{ $isLocalSong := or $isLocalMusicPage (eq .Source "local") (eq .Source "local-file") }}
         <li class="song-card"
             data-id="{{.ID}}"
             data-source="{{.Source}}"
@@ -102,6 +120,17 @@
                 </h3>
                 <div class="artist-line">
                     <i class="fa-regular fa-user artist-icon"></i>
+                    {{ if $isLocalSong }}
+                        {{ if .Artist }}
+                            <span>{{ .Artist }}</span>
+                        {{ else }}
+                            <span>未知歌手</span>
+                        {{ end }}
+                        {{ if .Album }}
+                            <span class="meta-separator">&middot;</span>
+                            <span class="meta-link-disabled album-link">{{ .Album }}</span>
+                        {{ end }}
+                    {{ else }}
                     {{ if gt (len $artists) 0 }}
                         {{ range $index, $artist := $artists }}
                             {{ if gt $index 0 }}<span class="meta-separator">/</span>{{ end }}
@@ -118,9 +147,10 @@
                             <a href="{{$.Root}}/album_jump?name={{urlquery .Album}}&artist={{urlquery .Artist}}&source={{urlquery $song.Source}}" class="meta-link album-link">{{ .Album }}</a>
                         {{ end }}
                     {{ end }}
+                    {{ end }}
                 </div>
                 <div class="tags">
-                    <span class="tag tag-src">{{ .Source }}</span>
+                    <span class="tag {{ if $isLocalSong }}tag-local{{ else }}tag-src{{ end }}">{{ if $isLocalSong }}本地{{ else }}{{ .Source }}{{ end }}</span>
                     <span class="tag tag-duration">{{ if .FormatDuration }}{{ .FormatDuration }}{{ else }}-{{ end }}</span>
                     <span class="tag tag-loading" id="size-{{.ID}}"><i class="fa fa-spinner fa-spin"></i></span>
                     <span class="tag tag-loading" id="bitrate-{{.ID}}"><i class="fa fa-circle-notch fa-spin"></i></span>
@@ -133,6 +163,7 @@
                     <i class="fa-solid fa-play"></i>
                 </button>
 
+                {{ if not $isLocalMusicPage }}
                 <button type="button" class="btn-circle btn-switch" title="换源"
                         onclick="switchSource(this)">
                     <i class="fa-solid fa-arrows-rotate"></i>
@@ -155,6 +186,7 @@
                     <i class="fa-solid fa-download"></i>
                 </a>
 
+                {{ if not $isLocalSong }}
                 <a href="{{$.Root}}/download_lrc?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}&album={{.Album}}&duration={{.Duration}}&extra={{urlquery (tojson .Extra)}}"
                    id="lrc-{{.ID}}" class="btn-circle btn-dl btn-lyric" title="下载歌词" target="_blank">
                     <i class="fa-solid fa-file-lines"></i>
@@ -164,6 +196,8 @@
                    class="btn-circle btn-dl btn-cover" title="下载封面" target="_blank">
                     <i class="fa-regular fa-image"></i>
                 </a>
+                {{ end }}
+                {{ end }}
             </div>
         </li>
         {{ end }}
