@@ -97,6 +97,14 @@ ffmpeg -version
 * macOS: `brew install ffmpeg`
 * Ubuntu/Debian: `sudo apt install ffmpeg`
 
+### Docker / Release 包里的 FFmpeg 与 ffprobe
+
+`ffprobe` 属于 FFmpeg 工具集，主要用于本地音乐的时长、码率和标签探测；`ffmpeg` 主要用于非 MP3 音频的封面/歌词元数据写入。缺少它们不会影响程序启动，也不会阻塞本地音乐列表加载，只会降级相关增强能力。
+
+* **Docker 镜像**: `Dockerfile` 已安装 Alpine 的 `ffmpeg` 包，并在构建时校验 `ffmpeg` 与 `ffprobe` 都可用；Docker / Compose 部署通常无需额外安装。
+* **GitHub Release 的 CLI / 桌面 / 移动端包**: `release.yml` 产物默认不内置 `ffmpeg/ffprobe`，也不要求 CI 打包机安装它们；如果需要本地音乐探测或非 MP3 元数据内嵌，请在运行机器上按上面的命令自行安装 FFmpeg。
+* **Linux deb/rpm/AppImage**: 仍按外部系统工具处理，不强制声明硬依赖，避免在不同发行版上因为 FFmpeg 包源差异导致安装失败。
+
 ## 新增改动（简要）
 
 * **Web 架构全面重构**：前端代码彻底模块化（拆分独立的 JS / CSS / HTML 模板），后端路由按业务域拆分（音乐查询、歌单管理、视频生成），大幅提升代码可维护性。

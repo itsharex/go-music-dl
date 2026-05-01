@@ -12,7 +12,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o music-dl ./cmd/music-dl
 # Runtime stage
 FROM alpine:3.22
 
-RUN apk --no-cache add ca-certificates tzdata ffmpeg
+RUN apk --no-cache add ca-certificates tzdata ffmpeg \
+    && ffmpeg -version >/dev/null \
+    && ffprobe -version >/dev/null
 
 ENV TZ=Asia/Shanghai
 
