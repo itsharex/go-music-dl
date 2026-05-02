@@ -337,11 +337,11 @@
         overflow: visible; /* 【手机端防裁切关键属性】 */
     }
     .vg-disc-container { 
-        /* 稍微收缩尺寸给光柱让出渲染空间 */
-        width: 45vw; height: 45vw; 
-        max-width: 200px; max-height: 200px; 
-        min-width: 140px; min-height: 140px; 
-        margin-bottom: 25px; 
+        /* 进一步收缩尺寸并加大底部边距，防止光柱碰到歌名 */
+        width: 40vw; height: 40vw; 
+        max-width: 170px; max-height: 170px; 
+        min-width: 130px; min-height: 130px; 
+        margin-bottom: 40px; 
     }
     .vg-info { margin-bottom: 15px; width: 90%; padding: 10px 15px; }
     .vg-controls { transform: scale(0.85); gap: 10px; margin-bottom: 5px; }
