@@ -645,8 +645,8 @@ body.karaoke-lyrics-active .aplayer .aplayer-lrc p.aplayer-lrc-current {
 }
 
 /* 普通逐行歌词保持原有详情页高亮风格，逐字歌词改走独立样式 */
-.vg-line:not(.vg-line-karaoke) { color: rgba(255, 255, 255, 0.4) !important; }
-.vg-line:not(.vg-line-karaoke):hover { color: rgba(255, 255, 255, 0.8) !important; }
+.vg-line:not(.vg-line-karaoke) { color: rgba(255, 255, 255, 0.85) !important; text-shadow: 0 2px 5px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.6) !important; }
+.vg-line:not(.vg-line-karaoke):hover { color: #ffffff !important; }
 .vg-line.active:not(.vg-line-karaoke) { color: #ffffff !important; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 
 @media (max-width: 768px) {
