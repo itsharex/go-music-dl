@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -841,8 +842,47 @@ func RegisterCollectionRoutes(api *gin.RouterGroup) {
 			return
 		}
 
+		var req struct {
+			Songs []struct {
+				SongID string `json:"id"`
+				Source string `json:"source"`
+			} `json:"songs"`
+		}
+		if c.Request.Body != nil && strings.Contains(c.GetHeader("Content-Type"), "application/json") {
+			_ = c.ShouldBindJSON(&req)
+		}
+
 		songID := c.Query("id")
 		source := c.Query("source")
+		if len(req.Songs) > 0 {
+			if err := db.Transaction(func(tx *gorm.DB) error {
+				for _, song := range req.Songs {
+					songID = strings.TrimSpace(song.SongID)
+					source = strings.TrimSpace(song.Source)
+					if songID == "" || source == "" {
+						return errors.New("批量取消收藏需要提供每首歌的 id 和 source")
+					}
+					if err := tx.Where(
+						"collection_id = ? AND song_id = ? AND source = ?",
+						collection.ID,
+						songID,
+						source,
+					).Delete(&SavedSong{}).Error; err != nil {
+						return err
+					}
+				}
+				return nil
+			}); err != nil {
+				if strings.Contains(err.Error(), "批量取消收藏") {
+					c.JSON(400, gin.H{"error": err.Error()})
+				} else {
+					c.JSON(500, gin.H{"error": "删除失败"})
+				}
+				return
+			}
+			c.JSON(200, gin.H{"status": "ok"})
+			return
+		}
 		if songID == "" || source == "" {
 			c.JSON(400, gin.H{"error": "需要通过 query 传递 id 和 source"})
 			return

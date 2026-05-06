@@ -2288,6 +2288,7 @@ function updateBatchToolbar() {
     const batchSwitch = document.getElementById('btn-batch-switch');
     const batchDl = document.getElementById('btn-batch-dl');
     const batchDeleteLocal = document.getElementById('btn-batch-delete-local');
+    const batchRemoveCollection = document.getElementById('btn-batch-remove-collection');
     
     if(document.getElementById('selected-count')) {
         document.getElementById('selected-count').textContent = count;
@@ -2298,14 +2299,20 @@ function updateBatchToolbar() {
         selectAllCb.checked = (allBoxes.length === count);
     }
 
+    const selectedSongs = getSelectedSongs();
+    const nonLocalCount = selectedSongs.filter(song => !isLocalMusicSourceValue(song.source)).length;
+    const localCount = selectedSongs.filter(song => isLocalMusicSourceValue(song.source)).length;
+
     if (count > 0) {
-        if(batchSwitch) batchSwitch.disabled = false;
-        if(batchDl) batchDl.disabled = false;
-        if(batchDeleteLocal) batchDeleteLocal.disabled = false;
+        if(batchSwitch) batchSwitch.disabled = nonLocalCount === 0;
+        if(batchDl) batchDl.disabled = nonLocalCount === 0;
+        if(batchDeleteLocal) batchDeleteLocal.disabled = localCount === 0;
+        if(batchRemoveCollection) batchRemoveCollection.disabled = false;
     } else {
         if(batchSwitch) batchSwitch.disabled = true;
         if(batchDl) batchDl.disabled = true;
         if(batchDeleteLocal) batchDeleteLocal.disabled = true;
+        if(batchRemoveCollection) batchRemoveCollection.disabled = true;
     }
     
     document.querySelectorAll('.song-card').forEach(card => card.classList.remove('selected'));
@@ -2374,18 +2381,25 @@ function getSelectedSongs() {
 }
 
 async function batchDownload() {
-    const songs = getSelectedSongs();
-    if (songs.length === 0) return;
+    const selectedSongs = getSelectedSongs();
+    const songs = selectedSongs.filter(song => !isLocalMusicSourceValue(song.source));
+    const skippedLocalCount = selectedSongs.length - songs.length;
+    if (selectedSongs.length === 0) return;
+    if (songs.length === 0) {
+        alert('选中的歌曲都是本地歌曲，无需批量下载。');
+        return;
+    }
     const batchDl = document.getElementById('btn-batch-dl');
     const batchSwitch = document.getElementById('btn-batch-switch');
     const originalBatchDlHTML = batchDl ? batchDl.innerHTML : '';
 
+    const skipText = skippedLocalCount > 0 ? `\n已跳过 ${skippedLocalCount} 首本地歌曲。` : '';
     if (webSettings.downloadToLocal) {
-        if (!confirm(`准备将 ${songs.length} 首歌曲保存到本地目录:\n${webSettings.downloadDir}`)) {
+        if (!confirm(`准备将 ${songs.length} 首歌曲保存到本地目录:\n${webSettings.downloadDir}${skipText}`)) {
             return;
         }
     } else {
-        if (!confirm(`准备下载 ${songs.length} 首歌曲。\n下载会依次交给浏览器下载管理器，请保持页面打开。`)) {
+        if (!confirm(`准备下载 ${songs.length} 首歌曲。\n下载会依次交给浏览器下载管理器，请保持页面打开。${skipText}`)) {
             return;
         }
     }
@@ -2424,6 +2438,9 @@ async function batchDownload() {
             ? `本地保存完成，成功 ${success}/${songs.length}`
             : `批量下载已触发，成功 ${success}/${songs.length}`;
 
+        if (skippedLocalCount > 0) {
+            message += `\n已跳过 ${skippedLocalCount} 首本地歌曲。`;
+        }
         if (webSettings.downloadToLocal) {
             message += `\n目录：${webSettings.downloadDir}`;
         }
@@ -2557,24 +2574,71 @@ async function batchDeleteLocalMusic() {
 }
 
 function batchSwitchSource() {
-    const checkedBoxes = document.querySelectorAll('.song-checkbox:checked');
+    const checkedBoxes = Array.from(document.querySelectorAll('.song-checkbox:checked'));
     if (checkedBoxes.length === 0) return;
 
-    if (!confirm(`准备对 ${checkedBoxes.length} 首歌曲进行自动换源。\n这可能需要一些时间，请耐心等待。`)) {
+    const cards = checkedBoxes
+        .map(cb => cb.closest('.song-card'))
+        .filter(card => card && !isLocalMusicSourceValue(card.dataset.source));
+    const skippedLocalCount = checkedBoxes.length - cards.length;
+    if (cards.length === 0) {
+        alert('选中的歌曲都是本地歌曲，无需批量换源。');
         return;
     }
 
-    checkedBoxes.forEach((cb, index) => {
-        const card = cb.closest('.song-card');
-        if (card) {
-            const switchBtn = card.querySelector('.btn-switch');
-            if (switchBtn) {
-                setTimeout(() => {
-                    switchSource(switchBtn);
-                }, index * 1000); 
-            }
+    const skipText = skippedLocalCount > 0 ? `\n已跳过 ${skippedLocalCount} 首本地歌曲。` : '';
+    if (!confirm(`准备对 ${cards.length} 首歌曲进行自动换源。\n这可能需要一些时间，请耐心等待。${skipText}`)) {
+        return;
+    }
+
+    cards.forEach((card, index) => {
+        const switchBtn = card.querySelector('.btn-switch');
+        if (switchBtn) {
+            setTimeout(() => {
+                switchSource(switchBtn);
+            }, index * 1000);
         }
     });
+}
+
+async function batchRemoveFromCollection(colId) {
+    const id = String(colId || '').trim();
+    const songs = getSelectedSongs();
+    if (!id || songs.length === 0) return;
+
+    if (!confirm(`确定从当前自建歌单中取消收藏 ${songs.length} 首歌曲吗？`)) {
+        return;
+    }
+
+    const btn = document.getElementById('btn-batch-remove-collection');
+    const originalHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 移出中';
+    }
+
+    try {
+        const response = await fetch(`${API_ROOT}/collections/${encodeURIComponent(id)}/songs`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                songs: songs.map(song => ({ id: song.id, source: song.source }))
+            })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload || payload.error) {
+            throw new Error((payload && payload.error) || '批量取消收藏失败');
+        }
+        alert(`已从当前歌单取消收藏 ${songs.length} 首歌曲。`);
+        await refreshCurrentPageContent({ scroll: false });
+    } catch (error) {
+        alert(error.message || '批量取消收藏失败');
+    } finally {
+        if (btn && btn.isConnected) {
+            btn.innerHTML = originalHTML;
+        }
+        updateBatchToolbar();
+    }
 }
 
 // ==========================================

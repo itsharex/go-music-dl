@@ -211,6 +211,51 @@ func TestImportedCollectionSongsEndpointUsesLiveFetchAndBlocksMutations(t *testi
 	}
 }
 
+func TestManualCollectionSongsEndpointSupportsBatchDelete(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	collection := Collection{
+		Name:        "Manual Playlist",
+		Kind:        collectionKindManual,
+		ContentType: collectionContentPlaylist,
+		Source:      "local",
+	}
+	if err := db.Create(&collection).Error; err != nil {
+		t.Fatalf("create manual collection: %v", err)
+	}
+
+	saved := []SavedSong{
+		{CollectionID: collection.ID, SongID: "song-1", Source: "qq", Name: "Song One"},
+		{CollectionID: collection.ID, SongID: "song-2", Source: localMusicSource, Name: "Song Two"},
+		{CollectionID: collection.ID, SongID: "song-3", Source: "netease", Name: "Song Three"},
+	}
+	if err := db.Create(&saved).Error; err != nil {
+		t.Fatalf("create saved songs: %v", err)
+	}
+
+	router := newCollectionTestRouter()
+	body := bytes.NewBufferString(`{"songs":[{"id":"song-1","source":"qq"},{"id":"song-2","source":"local"}]}`)
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("%s/collections/%d/songs", RoutePrefix, collection.ID), body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("DELETE batch songs status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var remaining []SavedSong
+	if err := db.Where("collection_id = ?", collection.ID).Order("song_id ASC").Find(&remaining).Error; err != nil {
+		t.Fatalf("query remaining songs: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("remaining songs len = %d, want 1", len(remaining))
+	}
+	if remaining[0].SongID != "song-3" {
+		t.Fatalf("remaining song = %q, want song-3", remaining[0].SongID)
+	}
+}
+
 func TestLoadImportedCollectionSongsFallsBackToParse(t *testing.T) {
 	origPlaylistDetail := playlistDetailFuncProvider
 	origParsePlaylist := parsePlaylistFuncProvider

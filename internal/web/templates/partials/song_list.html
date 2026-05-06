@@ -71,6 +71,11 @@
                 <i class="fa-solid fa-trash"></i> 批量删除
             </button>
             {{ else }}
+            {{ if .CanRemoveSongs }}
+            <button class="btn-pill btn-pill-warn" id="btn-batch-remove-collection" onclick="batchRemoveFromCollection('{{.ColID}}')" disabled>
+                <i class="fa-solid fa-heart-crack"></i> 批量取消收藏
+            </button>
+            {{ end }}
             <button class="btn-pill btn-pill-switch" id="btn-batch-switch" onclick="batchSwitchSource()" disabled>
                 <i class="fa-solid fa-arrows-rotate"></i> 批量换源
             </button>
@@ -164,6 +169,11 @@
                 </button>
 
                 {{ if $isLocalMusicPage }}
+                <button type="button" class="btn-circle btn-fav" title="收藏到自制歌单"
+                        onclick="openAddToCollectionModal(this)">
+                    <i class="fa-regular fa-heart"></i>
+                </button>
+
                 {{ if index .Extra "lyric" }}
                 <a href="{{$.Root}}/download_lrc?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}&album={{.Album}}&duration={{.Duration}}&extra={{urlquery (tojson .Extra)}}"
                    id="lrc-{{.ID}}" class="btn-circle btn-dl btn-lyric" title="下载歌词" target="_blank">
@@ -185,10 +195,12 @@
                 {{ end }}
 
                 {{ if not $isLocalMusicPage }}
+                {{ if not $isLocalSong }}
                 <button type="button" class="btn-circle btn-switch" title="换源"
                         onclick="switchSource(this)">
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
+                {{ end }}
 
                 {{ if $.CanRemoveSongs }}
                 <button type="button" class="btn-circle btn-fav" title="移出当前歌单"
@@ -202,17 +214,24 @@
                 </button>
                 {{ end }}
 
+                {{ if not $isLocalSong }}
                 <a href="{{$.Root}}/download?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}&album={{urlquery .Album}}&cover={{urlquery .Cover}}&extra={{urlquery (tojson .Extra)}}"
                    id="dl-{{.ID}}" class="btn-circle btn-dl btn-download" title="下载歌曲" target="_blank">
                     <i class="fa-solid fa-download"></i>
                 </a>
+                {{ end }}
 
-                {{ if not $isLocalSong }}
                 <a href="{{$.Root}}/download_lrc?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}&album={{.Album}}&duration={{.Duration}}&extra={{urlquery (tojson .Extra)}}"
                    id="lrc-{{.ID}}" class="btn-circle btn-dl btn-lyric" title="下载歌词" target="_blank">
                     <i class="fa-solid fa-file-lines"></i>
                 </a>
 
+                {{ if $isLocalSong }}
+                <a href="{{$.Root}}/local_music/cover?id={{urlquery .ID}}&download=1&name={{urlquery .Name}}&artist={{urlquery .Artist}}"
+                   class="btn-circle btn-dl btn-cover" title="下载封面" target="_blank">
+                    <i class="fa-regular fa-image"></i>
+                </a>
+                {{ else }}
                 <a href="{{$.Root}}/download_cover?url={{ .Cover }}&name={{ .Name }}&artist={{ .Artist }}"
                    class="btn-circle btn-dl btn-cover" title="下载封面" target="_blank">
                     <i class="fa-regular fa-image"></i>

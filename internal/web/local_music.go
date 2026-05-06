@@ -920,16 +920,50 @@ func containsString(values []string, target string) bool {
 	return false
 }
 
+func localMusicSavedCollectionNames(trackID string) ([]string, error) {
+	if db == nil {
+		return nil, nil
+	}
+
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return nil, nil
+	}
+
+	var collections []Collection
+	if err := db.
+		Joins("JOIN saved_songs ON saved_songs.collection_id = collections.id").
+		Where("saved_songs.song_id = ? AND saved_songs.source IN ?", trackID, []string{localMusicSource, legacyLocalMusicSource}).
+		Order("collections.id DESC").
+		Find(&collections).Error; err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(collections))
+	for _, collection := range collections {
+		name := strings.TrimSpace(collection.Name)
+		if name == "" {
+			name = fmt.Sprintf("歌单 %d", collection.ID)
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
 func deleteLocalMusicTrack(id string) error {
 	track, err := localMusicTrackByID(id)
 	if err != nil {
 		return errors.New("本地音乐不存在或已不在下载目录内")
 	}
-	if err := os.Remove(track.absPath); err != nil {
+	collectionNames, err := localMusicSavedCollectionNames(track.ID)
+	if err != nil {
 		return err
 	}
-	if db != nil {
-		_ = db.Where("song_id = ? AND source IN ?", track.ID, []string{localMusicSource, legacyLocalMusicSource}).Delete(&SavedSong{}).Error
+	if len(collectionNames) > 0 {
+		return fmt.Errorf("本地音乐已收藏在：%s。请先从这些自建歌单中取消收藏，再删除本地文件", strings.Join(collectionNames, "、"))
+	}
+	if err := os.Remove(track.absPath); err != nil {
+		return err
 	}
 	return nil
 }
