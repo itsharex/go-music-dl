@@ -206,6 +206,14 @@ func GetPlaylistSearchFunc(source string) SearchPlaylistFunc {
 		return kugou.New(c).SearchPlaylist
 	case "kuwo":
 		return kuwo.New(c).SearchPlaylist
+	case "migu":
+		return migu.New(c).SearchPlaylist
+	case "jamendo":
+		return jamendo.New(c).SearchPlaylist
+	case "joox":
+		return joox.New(c).SearchPlaylist
+	case "qianqian":
+		return qianqian.New(c).SearchPlaylist
 	case "bilibili":
 		return bilibili.New(c).SearchPlaylist
 	case "soda":
@@ -254,6 +262,14 @@ func GetPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
 		return kugou.New(c).GetPlaylistSongs
 	case "kuwo":
 		return kuwo.New(c).GetPlaylistSongs
+	case "migu":
+		return migu.New(c).GetPlaylistSongs
+	case "jamendo":
+		return jamendo.New(c).GetPlaylistSongs
+	case "joox":
+		return joox.New(c).GetPlaylistSongs
+	case "qianqian":
+		return qianqian.New(c).GetPlaylistSongs
 	case "bilibili":
 		return bilibili.New(c).GetPlaylistSongs
 	case "soda":
@@ -362,6 +378,10 @@ func GetParseFunc(source string) func(string) (*model.Song, error) {
 		return fivesing.New(c).Parse
 	case "jamendo":
 		return jamendo.New(c).Parse
+	case "joox":
+		return joox.New(c).Parse
+	case "qianqian":
+		return qianqian.New(c).Parse
 	default:
 		return nil
 	}
@@ -378,6 +398,14 @@ func GetParsePlaylistFunc(source string) func(string) (*model.Playlist, []model.
 		return kugou.New(c).ParsePlaylist
 	case "kuwo":
 		return kuwo.New(c).ParsePlaylist
+	case "migu":
+		return migu.New(c).ParsePlaylist
+	case "jamendo":
+		return jamendo.New(c).ParsePlaylist
+	case "joox":
+		return joox.New(c).ParsePlaylist
+	case "qianqian":
+		return qianqian.New(c).ParsePlaylist
 	case "bilibili":
 		return bilibili.New(c).ParsePlaylist
 	case "soda":
@@ -494,6 +522,9 @@ func GetOriginalLink(source, id, typeStr string) string {
 		if typeStr == "album" {
 			return "https://music.migu.cn/v3/music/album/" + id
 		}
+		if typeStr == "playlist" {
+			return "https://music.migu.cn/v5/#/playlist?playlistId=" + id + "&playlistType=ordinary"
+		}
 		if typeStr == "song" {
 			return "https://music.migu.cn/v3/music/song/" + id
 		}
@@ -501,21 +532,45 @@ func GetOriginalLink(source, id, typeStr string) string {
 		if typeStr == "album" {
 			return "https://www.jamendo.com/album/" + id
 		}
+		if typeStr == "playlist" {
+			return "https://www.jamendo.com/playlist/" + id
+		}
+		if typeStr == "song" {
+			return "https://www.jamendo.com/track/" + id
+		}
 	case "joox":
 		if typeStr == "album" {
 			return "https://www.joox.com/hk/album/" + id
+		}
+		if typeStr == "playlist" {
+			return "https://www.joox.com/hk/playlist/" + id
+		}
+		if typeStr == "song" {
+			return "https://www.joox.com/hk/single/" + id
 		}
 	case "qianqian":
 		if typeStr == "album" {
 			return "https://music.91q.com/album/" + id
 		}
+		if typeStr == "playlist" {
+			return "https://music.91q.com/songlist/" + id
+		}
+		if typeStr == "song" {
+			return "https://music.91q.com/song/" + id
+		}
 	case "soda":
 		if typeStr == "album" {
 			return "https://www.qishui.com/share/album?album_id=" + id
 		}
+		if typeStr == "playlist" {
+			return "https://www.qishui.com/playlist/" + id
+		}
 	case "bilibili":
 		return "https://www.bilibili.com/video/" + id
 	case "fivesing":
+		if typeStr == "playlist" {
+			return "http://5sing.kugou.com/dj/" + id + ".html"
+		}
 		if strings.Contains(id, "/") {
 			return "http://5sing.kugou.com/" + id + ".html"
 		}
@@ -795,7 +850,7 @@ func GetAllSourceNames() []string {
 }
 
 func GetPlaylistSourceNames() []string {
-	return []string{"netease", "qq", "kugou", "kuwo", "bilibili", "soda", "fivesing"}
+	return []string{"netease", "qq", "kugou", "kuwo", "migu", "jamendo", "joox", "qianqian", "bilibili", "soda", "fivesing"}
 }
 
 func GetAlbumSourceNames() []string {

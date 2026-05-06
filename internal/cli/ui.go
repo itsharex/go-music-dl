@@ -275,6 +275,10 @@ func getParseFunc(source string) func(string) (*model.Song, error) {
 		return fivesing.New(c).Parse
 	case "jamendo":
 		return jamendo.New(c).Parse
+	case "joox":
+		return joox.New(c).Parse
+	case "qianqian":
+		return qianqian.New(c).Parse
 	default:
 		return nil
 	}
@@ -292,6 +296,14 @@ func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error)
 		return kugou.New(c).SearchPlaylist
 	case "kuwo":
 		return kuwo.New(c).SearchPlaylist
+	case "migu":
+		return migu.New(c).SearchPlaylist
+	case "jamendo":
+		return jamendo.New(c).SearchPlaylist
+	case "joox":
+		return joox.New(c).SearchPlaylist
+	case "qianqian":
+		return qianqian.New(c).SearchPlaylist
 	case "bilibili":
 		return bilibili.New(c).SearchPlaylist
 	case "soda":
@@ -341,6 +353,14 @@ func getPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
 		return kugou.New(c).GetPlaylistSongs
 	case "kuwo":
 		return kuwo.New(c).GetPlaylistSongs
+	case "migu":
+		return migu.New(c).GetPlaylistSongs
+	case "jamendo":
+		return jamendo.New(c).GetPlaylistSongs
+	case "joox":
+		return joox.New(c).GetPlaylistSongs
+	case "qianqian":
+		return qianqian.New(c).GetPlaylistSongs
 	case "bilibili":
 		return bilibili.New(c).GetPlaylistSongs
 	case "soda":
@@ -407,6 +427,14 @@ func getParsePlaylistFunc(source string) func(string) (*model.Playlist, []model.
 		return kugou.New(c).ParsePlaylist
 	case "kuwo":
 		return kuwo.New(c).ParsePlaylist
+	case "migu":
+		return migu.New(c).ParsePlaylist
+	case "jamendo":
+		return jamendo.New(c).ParsePlaylist
+	case "joox":
+		return joox.New(c).ParsePlaylist
+	case "qianqian":
+		return qianqian.New(c).ParsePlaylist
 	case "bilibili":
 		return bilibili.New(c).ParsePlaylist
 	case "soda":
