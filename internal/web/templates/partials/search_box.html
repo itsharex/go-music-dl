@@ -43,6 +43,9 @@
             <button type="button" class="btn-pill btn-pill-category" onclick="goToPlaylistCategories()">
                 <i class="fa-solid fa-table-cells-large"></i> 歌单分类
             </button>
+            <button type="button" class="btn-pill btn-pill-mine" onclick="goToUserPlaylists()">
+                <i class="fa-solid fa-heart"></i> 我的歌单
+            </button>
         </div>
 
         {{ if .Error }}
@@ -67,6 +70,7 @@
                         data-playlist-supported="{{ index $.PlaylistSupported $source }}"
                         data-album-supported="{{ index $.AlbumSupported $source }}"
                         data-category-supported="{{ index $.CategorySupported $source }}"
+                        data-user-playlist-supported="{{ index $.UserPlaylistSupported $source }}"
                         {{ if $.Selected }}
                             {{ range $.Selected }}{{ if eq . $source }}checked{{ end }}{{ end }}
                         {{ else }}

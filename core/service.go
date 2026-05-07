@@ -140,6 +140,9 @@ type SearchFunc func(keyword string) ([]model.Song, error)
 type SearchPlaylistFunc func(keyword string) ([]model.Playlist, error)
 type PlaylistCategoriesFunc func() ([]model.PlaylistCategory, error)
 type CategoryPlaylistsFunc func(string, int, int) ([]model.Playlist, error)
+type QRLoginCreateFunc func() (*model.QRLoginSession, error)
+type QRLoginCheckFunc func(string) (*model.QRLoginResult, error)
+type UserPlaylistsFunc func(page, limit int) ([]model.Playlist, error)
 
 func GetSearchFunc(source string) SearchFunc {
 	c := CM.Get(source)
@@ -341,6 +344,62 @@ func GetCategoryPlaylistsFunc(source string) CategoryPlaylistsFunc {
 	default:
 		return nil
 	}
+}
+
+func GetQRLoginCreateFunc(source string) QRLoginCreateFunc {
+	switch source {
+	case "netease":
+		return netease.CreateQRLogin
+	case "qq":
+		return qq.CreateQRLogin
+	case "kugou":
+		return kugou.CreateQRLogin
+	case "bilibili":
+		return bilibili.CreateQRLogin
+	default:
+		return nil
+	}
+}
+
+func GetQRLoginCheckFunc(source string) QRLoginCheckFunc {
+	switch source {
+	case "netease":
+		return netease.CheckQRLogin
+	case "qq":
+		return qq.CheckQRLogin
+	case "kugou":
+		return kugou.CheckQRLogin
+	case "bilibili":
+		return bilibili.CheckQRLogin
+	default:
+		return nil
+	}
+}
+
+func GetQRLoginSourceNames() []string {
+	return []string{"netease", "qq", "kugou", "bilibili"}
+}
+
+func GetUserPlaylistsFunc(source string) UserPlaylistsFunc {
+	c := CM.Get(source)
+	switch source {
+	case "netease":
+		return netease.New(c).GetUserPlaylists
+	case "qq":
+		return qq.New(c).GetUserPlaylists
+	case "kugou":
+		return kugou.New(c).GetUserPlaylists
+	default:
+		return nil
+	}
+}
+
+func GetUserPlaylistSourceNames() []string {
+	return []string{"netease", "qq", "kugou"}
+}
+
+func GetRecommendSourceNames() []string {
+	return []string{"netease", "qq", "kugou", "kuwo"}
 }
 
 func GetDownloadFunc(source string) func(*model.Song) (string, error) {

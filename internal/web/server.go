@@ -213,9 +213,18 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 	for _, s := range core.GetPlaylistCategorySourceNames() {
 		playlistCategorySupported[s] = true
 	}
+	qrLoginSupported := make(map[string]bool)
+	for _, s := range core.GetQRLoginSourceNames() {
+		qrLoginSupported[s] = true
+	}
+	userPlaylistSupported := make(map[string]bool)
+	for _, s := range core.GetUserPlaylistSourceNames() {
+		userPlaylistSupported[s] = true
+	}
 
 	playlistCategorySources, _ := c.Get("PlaylistCategorySources")
 	playlistCategoryCurrent, _ := c.Get("PlaylistCategoryCurrent")
+	playlistSourceTabs, _ := c.Get("PlaylistSourceTabs")
 
 	settings := core.GetWebSettings()
 	defaultPageSize := settings.WebPageSize
@@ -295,6 +304,7 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 		"PlaylistSupported":       playlistSupported,
 		"AlbumSupported":          albumSupported,
 		"CategorySupported":       playlistCategorySupported,
+		"QRLoginSupported":        qrLoginSupported,
 		"SearchPlaceholder":       searchPlaceholderForType(searchType),
 		"CollectionLabel":         collectionLabelForSearchType(searchType),
 		"CollectionCreator":       collectionCreatorLabelForSearchType(searchType),
@@ -308,6 +318,8 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 		"IsLocalColPage":          isLocalColPage,
 		"PlaylistCategorySources": playlistCategorySources,
 		"PlaylistCategoryCurrent": playlistCategoryCurrent,
+		"PlaylistSourceTabs":      playlistSourceTabs,
+		"UserPlaylistSupported":   userPlaylistSupported,
 	})
 }
 
@@ -392,6 +404,7 @@ func Start(port string, shouldOpenBrowser bool) {
 	})
 
 	RegisterMusicRoutes(api)
+	RegisterQRLoginRoutes(api)
 	RegisterCollectionRoutes(api)
 	RegisterLocalMusicRoutes(api)
 	RegisterVideogenRoutes(api, videoDir)

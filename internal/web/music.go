@@ -243,6 +243,98 @@ func buildPlaylistCategoryPageSource(source string, categories []model.PlaylistC
 	}
 }
 
+type playlistSourceTab struct {
+	Source    string
+	Name      string
+	Count     int
+	Playlists []model.Playlist
+	Error     string
+}
+
+type playlistSourceTabsData struct {
+	ID       string
+	Icon     string
+	Title    string
+	Subtitle string
+	Empty    string
+	Tabs     []playlistSourceTab
+}
+
+func filterAvailableSources(requested, supported []string) []string {
+	allowed := make(map[string]bool, len(supported))
+	for _, source := range supported {
+		allowed[strings.TrimSpace(source)] = true
+	}
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(requested))
+	for _, source := range requested {
+		source = strings.TrimSpace(source)
+		if source == "" || !allowed[source] || seen[source] {
+			continue
+		}
+		seen[source] = true
+		result = append(result, source)
+	}
+	if len(result) == 0 {
+		return append([]string(nil), supported...)
+	}
+	return result
+}
+
+func loadPlaylistSourceTabs(sources []string, fetcher func(string) ([]model.Playlist, error)) ([]playlistSourceTab, string) {
+	type tabResult struct {
+		source    string
+		playlists []model.Playlist
+		err       error
+	}
+
+	results := make(map[string]tabResult, len(sources))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	for _, src := range sources {
+		wg.Add(1)
+		go func(s string) {
+			defer wg.Done()
+			pls, err := fetcher(s)
+			for i := range pls {
+				pls[i].Source = s
+			}
+			mu.Lock()
+			results[s] = tabResult{source: s, playlists: pls, err: err}
+			mu.Unlock()
+		}(src)
+	}
+	wg.Wait()
+
+	tabs := make([]playlistSourceTab, 0, len(sources))
+	failed := make([]string, 0)
+	for _, src := range sources {
+		res, ok := results[src]
+		if !ok {
+			continue
+		}
+		tab := playlistSourceTab{
+			Source:    src,
+			Name:      core.GetSourceDescription(src),
+			Count:     len(res.playlists),
+			Playlists: res.playlists,
+		}
+		if res.err != nil {
+			tab.Error = res.err.Error()
+			failed = append(failed, tab.Name)
+		}
+		tabs = append(tabs, tab)
+	}
+
+	errMsg := ""
+	if len(failed) > 0 && len(failed) == len(tabs) {
+		errMsg = "全部来源加载失败：" + strings.Join(failed, "、")
+	} else if len(failed) > 0 {
+		errMsg = "部分来源加载失败：" + strings.Join(failed, "、")
+	}
+	return tabs, errMsg
+}
+
 func playlistCategoryPlaylistsURL(source string, category model.PlaylistCategory) string {
 	values := url.Values{}
 	values.Set("source", source)
@@ -262,34 +354,43 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 	})
 
 	api.GET("/recommend", func(c *gin.Context) {
-		sources := c.QueryArray("sources")
-		if len(sources) == 0 {
-			sources = []string{"netease", "qq", "kugou", "kuwo"}
-		}
-
-		var allPlaylists []model.Playlist
-		var wg sync.WaitGroup
-		var mu sync.Mutex
-
-		for _, src := range sources {
+		sources := filterAvailableSources(c.QueryArray("sources"), core.GetRecommendSourceNames())
+		tabs, errMsg := loadPlaylistSourceTabs(sources, func(src string) ([]model.Playlist, error) {
 			fn := core.GetRecommendFunc(src)
 			if fn == nil {
-				continue
+				return nil, fmt.Errorf("该源不支持推荐歌单")
 			}
-			wg.Add(1)
-			go func(s string) {
-				defer wg.Done()
-				res, err := fn()
-				if err == nil && len(res) > 0 {
-					mu.Lock()
-					allPlaylists = append(allPlaylists, res...)
-					mu.Unlock()
-				}
-			}(src)
-		}
-		wg.Wait()
+			return fn()
+		})
+		c.Set("PlaylistSourceTabs", playlistSourceTabsData{
+			ID:       "recommend",
+			Icon:     "fa-fire",
+			Title:    "每日推荐歌单",
+			Subtitle: "按渠道查看各平台为你推荐的歌单。",
+			Empty:    "暂无推荐歌单。",
+			Tabs:     tabs,
+		})
+		renderIndex(c, nil, nil, "每日推荐", sources, errMsg, "playlist", "", "", "", false, "", nil)
+	})
 
-		renderIndex(c, nil, allPlaylists, "每日推荐", sources, "", "playlist", "", "", "", false, "", nil)
+	api.GET("/user_playlists", func(c *gin.Context) {
+		sources := filterAvailableSources(c.QueryArray("sources"), core.GetUserPlaylistSourceNames())
+		tabs, errMsg := loadPlaylistSourceTabs(sources, func(src string) ([]model.Playlist, error) {
+			fn := core.GetUserPlaylistsFunc(src)
+			if fn == nil {
+				return nil, fmt.Errorf("该源不支持个人歌单")
+			}
+			return fn(1, 50)
+		})
+		c.Set("PlaylistSourceTabs", playlistSourceTabsData{
+			ID:       "user-playlists",
+			Icon:     "fa-heart",
+			Title:    "我收藏的歌单",
+			Subtitle: "查看已登录平台中你创建和收藏的歌单，未登录的渠道请先在设置中扫码登录。",
+			Empty:    "该渠道暂无个人歌单，或未登录。",
+			Tabs:     tabs,
+		})
+		renderIndex(c, nil, nil, "我的歌单", sources, errMsg, "playlist", "", "", "", false, "", nil)
 	})
 
 	api.GET("/playlist_categories", func(c *gin.Context) {

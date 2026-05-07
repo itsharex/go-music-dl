@@ -966,6 +966,21 @@ function goToPlaylistCategories() {
     }
 }
 
+function goToUserPlaylists() {
+    const selected = [];
+    document.querySelectorAll('.source-checkbox:checked').forEach(cb => {
+        if (cb.dataset.userPlaylistSupported === 'true') {
+            selected.push(cb.value);
+        }
+    });
+
+    if (selected.length === 0) {
+        navigateTo(API_ROOT + '/user_playlists');
+    } else {
+        navigateTo(API_ROOT + '/user_playlists?sources=' + selected.map(encodeURIComponent).join('&sources='));
+    }
+}
+
 function goToPage(page) {
     const target = parseInt(page, 10);
     if (!Number.isFinite(target) || target < 1) return;
@@ -1060,6 +1075,422 @@ function inspectSong(card) {
 
 function queueInspectSong(card, delay = INSPECT_REQUEST_DELAY_MS) {
     window.setTimeout(() => inspectSong(card), delay);
+}
+
+const QR_LOGIN_SOURCE_LABELS = {
+    netease: '网易云音乐',
+    qq: 'QQ音乐',
+    kugou: '酷狗音乐',
+    bilibili: 'Bilibili'
+};
+
+let qrLoginState = {
+    source: '',
+    key: '',
+    pollTimer: 0,
+    pollBusy: false
+};
+
+function qrLoginSourceLabel(source) {
+    return QR_LOGIN_SOURCE_LABELS[source] || source;
+}
+
+function clearQRLoginPoll() {
+    if (qrLoginState.pollTimer) {
+        window.clearInterval(qrLoginState.pollTimer);
+        qrLoginState.pollTimer = 0;
+    }
+    qrLoginState.pollBusy = false;
+}
+
+function setQRLoginStatus(message, type = '') {
+    const el = document.getElementById('qrLoginStatus');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'qr-login-status' + (type ? ` ${type}` : '');
+}
+
+function setQRLoginLoading(show, message = '正在生成二维码...') {
+    const el = document.getElementById('qrLoginLoading');
+    if (!el) return;
+    el.textContent = message;
+    el.style.display = show ? 'flex' : 'none';
+}
+
+function resetQRLoginView(source) {
+    const title = document.getElementById('qrLoginTitle');
+    const canvas = document.getElementById('qrLoginCanvas');
+    const image = document.getElementById('qrLoginImage');
+    if (title) title.textContent = `${qrLoginSourceLabel(source)}扫码登录`;
+    if (canvas) canvas.style.display = 'none';
+    if (image) {
+        image.style.display = 'none';
+        image.removeAttribute('src');
+    }
+    setQRLoginLoading(true);
+    setQRLoginStatus('请使用对应音乐 App 扫码登录');
+}
+
+function closeQRLoginModal() {
+    clearQRLoginPoll();
+    const modal = document.getElementById('qrLoginModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function restartQRLogin() {
+    if (!qrLoginState.source) return;
+    startQRLogin(qrLoginState.source);
+}
+
+function startQRLogin(source) {
+    source = String(source || '').trim();
+    if (!QR_LOGIN_SOURCE_LABELS[source]) {
+        showToast('扫码登录不可用', `${source || '当前平台'}暂不支持扫码登录`, 'warning');
+        return;
+    }
+
+    clearQRLoginPoll();
+    qrLoginState = { source, key: '', pollTimer: 0, pollBusy: false };
+    const modal = document.getElementById('qrLoginModal');
+    if (modal) modal.style.display = 'flex';
+    resetQRLoginView(source);
+
+    fetch(`${API_ROOT}/qr_login/${encodeURIComponent(source)}`, { method: 'POST' })
+        .then(async response => {
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data) {
+                throw new Error((data && data.error) || '二维码创建失败');
+            }
+            return data;
+        })
+        .then(session => {
+            qrLoginState.key = String(session.key || '');
+            renderQRLoginSession(session);
+            setQRLoginStatus('二维码已生成，请打开 App 扫码');
+            pollQRLogin();
+            qrLoginState.pollTimer = window.setInterval(pollQRLogin, 2200);
+        })
+        .catch(error => {
+            setQRLoginLoading(false);
+            setQRLoginStatus(error.message || '二维码创建失败', 'error');
+            showToast('二维码创建失败', error.message || '请稍后重试', 'error');
+        });
+}
+
+function renderQRLoginSession(session) {
+    const canvas = document.getElementById('qrLoginCanvas');
+    const image = document.getElementById('qrLoginImage');
+    const imageURL = String(session.image_url || session.imageURL || '').trim();
+    const loginURL = String(session.url || session.URL || '').trim();
+
+    if (imageURL && image) {
+        image.src = imageURL;
+        image.style.display = 'block';
+        if (canvas) canvas.style.display = 'none';
+        setQRLoginLoading(false);
+        return;
+    }
+
+    if (!loginURL || !canvas) {
+        throw new Error('二维码内容为空');
+    }
+
+    drawQRCodeToCanvas(loginURL, canvas);
+    canvas.style.display = 'block';
+    if (image) image.style.display = 'none';
+    setQRLoginLoading(false);
+}
+
+function cookieFromQRLoginResult(result) {
+    const direct = String(result?.cookie || '').trim();
+    if (direct) return direct;
+    const cookies = result?.cookies;
+    if (!cookies || typeof cookies !== 'object') return '';
+    return Object.keys(cookies)
+        .filter(key => String(key || '').trim() && String(cookies[key] || '').trim())
+        .sort()
+        .map(key => `${key}=${cookies[key]}`)
+        .join('; ');
+}
+
+function pollQRLogin() {
+    if (!qrLoginState.source || !qrLoginState.key || qrLoginState.pollBusy) return;
+    qrLoginState.pollBusy = true;
+
+    fetch(`${API_ROOT}/qr_login/${encodeURIComponent(qrLoginState.source)}?key=${encodeURIComponent(qrLoginState.key)}`)
+        .then(async response => {
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data) {
+                throw new Error((data && data.error) || '登录状态检查失败');
+            }
+            return data;
+        })
+        .then(result => {
+            const status = String(result.status || '');
+            const message = String(result.message || '').trim();
+            if (status === 'success') {
+                clearQRLoginPoll();
+                const cookie = cookieFromQRLoginResult(result);
+                const input = document.getElementById(`cookie-${qrLoginState.source}`);
+                if (input && cookie) input.value = cookie;
+                setQRLoginStatus('登录成功，Cookie 已保存', 'success');
+                showToast('扫码登录成功', `${qrLoginSourceLabel(qrLoginState.source)} Cookie 已保存`, 'success');
+                window.setTimeout(closeQRLoginModal, 900);
+                return;
+            }
+            if (status === 'scanned') {
+                setQRLoginStatus(message || '已扫码，请在手机上确认', 'warning');
+                return;
+            }
+            if (status === 'waiting') {
+                setQRLoginStatus(message || '等待扫码中');
+                return;
+            }
+            if (status === 'expired') {
+                clearQRLoginPoll();
+                setQRLoginStatus(message || '二维码已过期，请刷新', 'warning');
+                return;
+            }
+            clearQRLoginPoll();
+            setQRLoginStatus(message || '登录失败，请刷新重试', 'error');
+        })
+        .catch(error => {
+            clearQRLoginPoll();
+            setQRLoginStatus(error.message || '登录状态检查失败', 'error');
+        })
+        .finally(() => {
+            qrLoginState.pollBusy = false;
+        });
+}
+
+function qrUtf8Bytes(text) {
+    if (window.TextEncoder) {
+        return Array.from(new TextEncoder().encode(text));
+    }
+    return Array.from(unescape(encodeURIComponent(text)), ch => ch.charCodeAt(0));
+}
+
+function qrAppendBits(bits, value, length) {
+    for (let i = length - 1; i >= 0; i--) {
+        bits.push(((value >>> i) & 1) !== 0);
+    }
+}
+
+const QR_VERSION_SPECS = [
+    null,
+    { data: 19, ecc: 7, blocks: 1, align: [] },
+    { data: 34, ecc: 10, blocks: 1, align: [6, 18] },
+    { data: 55, ecc: 15, blocks: 1, align: [6, 22] },
+    { data: 80, ecc: 20, blocks: 1, align: [6, 26] },
+    { data: 108, ecc: 26, blocks: 1, align: [6, 30] },
+    { data: 136, ecc: 18, blocks: 2, align: [6, 34] }
+];
+
+function qrPickVersion(byteLength) {
+    for (let version = 1; version < QR_VERSION_SPECS.length; version++) {
+        if (byteLength <= Math.floor((QR_VERSION_SPECS[version].data * 8 - 12) / 8)) {
+            return version;
+        }
+    }
+    throw new Error('二维码内容过长，请刷新重试');
+}
+
+function qrGfMul(x, y) {
+    let z = 0;
+    for (let i = 7; i >= 0; i--) {
+        z = ((z << 1) ^ ((z >>> 7) * 0x11D)) & 0xFF;
+        if (((y >>> i) & 1) !== 0) z ^= x;
+    }
+    return z;
+}
+
+function qrRsGenerator(degree) {
+    const result = new Array(degree).fill(0);
+    result[degree - 1] = 1;
+    let root = 1;
+    for (let i = 0; i < degree; i++) {
+        for (let j = 0; j < degree; j++) {
+            result[j] = qrGfMul(result[j], root);
+            if (j + 1 < degree) result[j] ^= result[j + 1];
+        }
+        root = qrGfMul(root, 2);
+    }
+    return result;
+}
+
+function qrRsRemainder(data, generator) {
+    const result = new Array(generator.length).fill(0);
+    data.forEach(value => {
+        const factor = value ^ result.shift();
+        result.push(0);
+        for (let i = 0; i < result.length; i++) {
+            result[i] ^= qrGfMul(generator[i], factor);
+        }
+    });
+    return result;
+}
+
+function qrCodewords(text) {
+    const bytes = qrUtf8Bytes(text);
+    const version = qrPickVersion(bytes.length);
+    const spec = QR_VERSION_SPECS[version];
+    const bits = [];
+    qrAppendBits(bits, 0x4, 4);
+    qrAppendBits(bits, bytes.length, 8);
+    bytes.forEach(value => qrAppendBits(bits, value, 8));
+    const maxBits = spec.data * 8;
+    if (bits.length > maxBits) throw new Error('二维码内容过长');
+    for (let i = 0, n = Math.min(4, maxBits - bits.length); i < n; i++) bits.push(false);
+    while (bits.length % 8 !== 0) bits.push(false);
+
+    const data = [];
+    for (let i = 0; i < bits.length; i += 8) {
+        let value = 0;
+        for (let j = 0; j < 8; j++) value = (value << 1) | (bits[i + j] ? 1 : 0);
+        data.push(value);
+    }
+    for (let pad = 0xEC; data.length < spec.data; pad ^= 0xFD) {
+        data.push(pad);
+    }
+
+    const generator = qrRsGenerator(spec.ecc);
+    const blockLen = spec.data / spec.blocks;
+    const blocks = [];
+    for (let i = 0; i < spec.blocks; i++) {
+        const block = data.slice(i * blockLen, (i + 1) * blockLen);
+        blocks.push({ data: block, ecc: qrRsRemainder(block, generator) });
+    }
+
+    const result = [];
+    for (let i = 0; i < blockLen; i++) {
+        blocks.forEach(block => result.push(block.data[i]));
+    }
+    for (let i = 0; i < spec.ecc; i++) {
+        blocks.forEach(block => result.push(block.ecc[i]));
+    }
+    return { version, codewords: result };
+}
+
+function qrSetModule(qr, x, y, dark, fixed = false) {
+    if (x < 0 || y < 0 || x >= qr.size || y >= qr.size) return;
+    qr.modules[y][x] = !!dark;
+    if (fixed) qr.fixed[y][x] = true;
+}
+
+function qrAddFinder(qr, cx, cy) {
+    for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -4; dx <= 4; dx++) {
+            const dist = Math.max(Math.abs(dx), Math.abs(dy));
+            qrSetModule(qr, cx + dx, cy + dy, dist !== 2 && dist !== 4, true);
+        }
+    }
+}
+
+function qrAddAlignment(qr, cx, cy) {
+    for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+            const dist = Math.max(Math.abs(dx), Math.abs(dy));
+            qrSetModule(qr, cx + dx, cy + dy, dist === 0 || dist === 2, true);
+        }
+    }
+}
+
+function qrFormatBits(mask) {
+    const data = (1 << 3) | mask;
+    let bits = data << 10;
+    for (let i = 14; i >= 10; i--) {
+        if (((bits >>> i) & 1) !== 0) bits ^= 0x537 << (i - 10);
+    }
+    return ((data << 10) | (bits & 0x3FF)) ^ 0x5412;
+}
+
+function qrPlaceFormat(qr, mask) {
+    const bits = qrFormatBits(mask);
+    const n = qr.size;
+    for (let i = 0; i <= 5; i++) qrSetModule(qr, 8, i, ((bits >>> i) & 1) !== 0, true);
+    qrSetModule(qr, 8, 7, ((bits >>> 6) & 1) !== 0, true);
+    qrSetModule(qr, 8, 8, ((bits >>> 7) & 1) !== 0, true);
+    qrSetModule(qr, 7, 8, ((bits >>> 8) & 1) !== 0, true);
+    for (let i = 9; i < 15; i++) qrSetModule(qr, 14 - i, 8, ((bits >>> i) & 1) !== 0, true);
+    for (let i = 0; i < 8; i++) qrSetModule(qr, n - 1 - i, 8, ((bits >>> i) & 1) !== 0, true);
+    for (let i = 8; i < 15; i++) qrSetModule(qr, 8, n - 15 + i, ((bits >>> i) & 1) !== 0, true);
+    qrSetModule(qr, 8, n - 8, true, true);
+}
+
+function qrBuildMatrix(text) {
+    const { version, codewords } = qrCodewords(text);
+    const size = 17 + version * 4;
+    const qr = {
+        size,
+        modules: Array.from({ length: size }, () => new Array(size).fill(false)),
+        fixed: Array.from({ length: size }, () => new Array(size).fill(false))
+    };
+    qrAddFinder(qr, 3, 3);
+    qrAddFinder(qr, size - 4, 3);
+    qrAddFinder(qr, 3, size - 4);
+    for (let i = 8; i < size - 8; i++) {
+        qrSetModule(qr, i, 6, i % 2 === 0, true);
+        qrSetModule(qr, 6, i, i % 2 === 0, true);
+    }
+    QR_VERSION_SPECS[version].align.forEach(cy => {
+        QR_VERSION_SPECS[version].align.forEach(cx => {
+            if (!qr.fixed[cy][cx]) qrAddAlignment(qr, cx, cy);
+        });
+    });
+    for (let i = 0; i < 9; i++) {
+        if (i !== 6) {
+            qrSetModule(qr, 8, i, false, true);
+            qrSetModule(qr, i, 8, false, true);
+        }
+    }
+    for (let i = 0; i < 8; i++) qrSetModule(qr, size - 1 - i, 8, false, true);
+    for (let i = 0; i < 7; i++) qrSetModule(qr, 8, size - 1 - i, false, true);
+    qrSetModule(qr, 8, size - 8, true, true);
+
+    const bits = [];
+    codewords.forEach(value => qrAppendBits(bits, value, 8));
+    let bitIndex = 0;
+    let upward = true;
+    for (let right = size - 1; right >= 1; right -= 2) {
+        if (right === 6) right--;
+        for (let vert = 0; vert < size; vert++) {
+            const y = upward ? size - 1 - vert : vert;
+            for (let j = 0; j < 2; j++) {
+                const x = right - j;
+                if (qr.fixed[y][x]) continue;
+                let dark = bitIndex < bits.length ? bits[bitIndex] : false;
+                bitIndex++;
+                if ((x + y) % 2 === 0) dark = !dark;
+                qrSetModule(qr, x, y, dark, false);
+            }
+        }
+        upward = !upward;
+    }
+    qrPlaceFormat(qr, 0);
+    return qr;
+}
+
+function drawQRCodeToCanvas(text, canvas) {
+    const qr = qrBuildMatrix(text);
+    const logicalSize = 260;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = logicalSize * dpr;
+    canvas.height = logicalSize * dpr;
+    canvas.style.width = `${logicalSize}px`;
+    canvas.style.height = `${logicalSize}px`;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, logicalSize, logicalSize);
+    const border = 4;
+    const scale = Math.max(1, Math.floor(logicalSize / (qr.size + border * 2)));
+    const offset = Math.floor((logicalSize - (qr.size + border * 2) * scale) / 2) + border * scale;
+    ctx.fillStyle = '#0f172a';
+    for (let y = 0; y < qr.size; y++) {
+        for (let x = 0; x < qr.size; x++) {
+            if (qr.modules[y][x]) ctx.fillRect(offset + x * scale, offset + y * scale, scale, scale);
+        }
+    }
 }
 
 function openCookieModal() {

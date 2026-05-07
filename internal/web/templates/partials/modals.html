@@ -10,7 +10,12 @@
                 {{ range $source := .AllSources }}
                 <div class="cookie-item">
                     <label>{{ $source }}</label>
-                    <input type="text" id="cookie-{{$source}}" placeholder="在此粘贴 Cookie...">
+                    <div class="cookie-input-row">
+                        <input type="text" id="cookie-{{$source}}" placeholder="在此粘贴 Cookie...">
+                        {{ if index $.QRLoginSupported $source }}
+                        <button type="button" class="cookie-qr-btn" onclick="startQRLogin('{{$source}}')"><i class="fa-solid fa-qrcode"></i> 扫码</button>
+                        {{ end }}
+                    </div>
                 </div>
                 {{ end }}
             </div>
@@ -102,6 +107,29 @@
                 <p class="setting-hint">控制视频生成弹窗中的导出视频入口，默认隐藏。</p>
             </div>
             <button class="btn-save" onclick="saveCookies()">保存设置</button>
+        </div>
+    </div>
+</div>
+
+<div id="qrLoginModal" class="modal-overlay" style="z-index: 1007;">
+    <div class="modal qr-login-modal">
+        <div class="modal-header">
+            <h3 id="qrLoginTitle">扫码登录</h3>
+            <div class="modal-close" onclick="closeQRLoginModal()"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+        <div class="modal-body">
+            <div class="qr-login-card">
+                <div class="qr-login-frame">
+                    <canvas id="qrLoginCanvas" width="260" height="260"></canvas>
+                    <img id="qrLoginImage" class="qr-login-image" alt="扫码登录二维码">
+                    <div id="qrLoginLoading" class="qr-login-loading">正在生成二维码...</div>
+                </div>
+                <div id="qrLoginStatus" class="qr-login-status">请稍候</div>
+                <div class="qr-login-actions">
+                    <button type="button" class="btn-pill btn-pill-primary" onclick="restartQRLogin()"><i class="fa-solid fa-rotate-right"></i> 刷新二维码</button>
+                    <button type="button" class="btn-pill btn-pill-dl" onclick="closeQRLoginModal()">关闭</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
