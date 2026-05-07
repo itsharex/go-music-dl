@@ -209,6 +209,13 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 	for _, s := range core.GetAlbumSourceNames() {
 		albumSupported[s] = true
 	}
+	playlistCategorySupported := make(map[string]bool)
+	for _, s := range core.GetPlaylistCategorySourceNames() {
+		playlistCategorySupported[s] = true
+	}
+
+	playlistCategorySources, _ := c.Get("PlaylistCategorySources")
+	playlistCategoryCurrent, _ := c.Get("PlaylistCategoryCurrent")
 
 	settings := core.GetWebSettings()
 	defaultPageSize := settings.WebPageSize
@@ -270,34 +277,37 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 	}
 
 	c.HTML(200, "index.html", gin.H{
-		"Result":             songs,
-		"Playlists":          playlists,
-		"Page":               page,
-		"PageSize":           pageSize,
-		"TotalCount":         totalCount,
-		"TotalPages":         totalPages,
-		"PageStart":          pageStartDisplay,
-		"PageEnd":            pageEnd,
-		"Keyword":            q,
-		"AllSources":         allSrc,
-		"DefaultSources":     defaultSourcesForSearchType(searchType),
-		"SourceDescriptions": desc,
-		"Selected":           selected,
-		"Error":              errMsg,
-		"SearchType":         searchType,
-		"PlaylistSupported":  playlistSupported,
-		"AlbumSupported":     albumSupported,
-		"SearchPlaceholder":  searchPlaceholderForType(searchType),
-		"CollectionLabel":    collectionLabelForSearchType(searchType),
-		"CollectionCreator":  collectionCreatorLabelForSearchType(searchType),
-		"Root":               RoutePrefix,
-		"PlaylistLink":       playlistLink,
-		"ColID":              colID,
-		"ColName":            colName,
-		"CollectionKind":     collectionKind,
-		"ImportCollection":   importCollection,
-		"CanRemoveSongs":     colID != "" && collectionKind == collectionKindManual,
-		"IsLocalColPage":     isLocalColPage,
+		"Result":                  songs,
+		"Playlists":               playlists,
+		"Page":                    page,
+		"PageSize":                pageSize,
+		"TotalCount":              totalCount,
+		"TotalPages":              totalPages,
+		"PageStart":               pageStartDisplay,
+		"PageEnd":                 pageEnd,
+		"Keyword":                 q,
+		"AllSources":              allSrc,
+		"DefaultSources":          defaultSourcesForSearchType(searchType),
+		"SourceDescriptions":      desc,
+		"Selected":                selected,
+		"Error":                   errMsg,
+		"SearchType":              searchType,
+		"PlaylistSupported":       playlistSupported,
+		"AlbumSupported":          albumSupported,
+		"CategorySupported":       playlistCategorySupported,
+		"SearchPlaceholder":       searchPlaceholderForType(searchType),
+		"CollectionLabel":         collectionLabelForSearchType(searchType),
+		"CollectionCreator":       collectionCreatorLabelForSearchType(searchType),
+		"Root":                    RoutePrefix,
+		"PlaylistLink":            playlistLink,
+		"ColID":                   colID,
+		"ColName":                 colName,
+		"CollectionKind":          collectionKind,
+		"ImportCollection":        importCollection,
+		"CanRemoveSongs":          colID != "" && collectionKind == collectionKindManual,
+		"IsLocalColPage":          isLocalColPage,
+		"PlaylistCategorySources": playlistCategorySources,
+		"PlaylistCategoryCurrent": playlistCategoryCurrent,
 	})
 }
 

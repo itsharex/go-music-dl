@@ -52,11 +52,20 @@ func TestSearchBoxTemplateShowsLocalMusicEntryNextToCollections(t *testing.T) {
 	if !strings.Contains(html, `onclick="openLocalMusicPage()"`) {
 		t.Fatal("search box missing local music page entry")
 	}
+	if !strings.Contains(html, `onclick="goToPlaylistCategories()"`) {
+		t.Fatal("search box missing playlist categories entry")
+	}
 	if strings.Index(html, `onclick="openLocalMusicPage()"`) < strings.Index(html, `onclick="openCollectionManager()"`) {
 		t.Fatal("local music entry should be placed to the right of custom collection entry")
 	}
+	if strings.Index(html, `onclick="goToPlaylistCategories()"`) < strings.Index(html, `onclick="openLocalMusicPage()"`) {
+		t.Fatal("playlist categories entry should be placed to the right of local music entry")
+	}
 	if !strings.Contains(html, "本地音乐") {
 		t.Fatal("search box missing local music label")
+	}
+	if !strings.Contains(html, "歌单分类") {
+		t.Fatal("search box missing playlist categories label")
 	}
 
 	playlistGrid, err := templateFS.ReadFile("templates/partials/playlist_grid.html")

@@ -97,6 +97,164 @@ func applyImportCollectionFallback(meta *importCollectionMeta, playlist *model.P
 	}
 }
 
+type playlistCategoryPageItem struct {
+	ID     string
+	Name   string
+	Hot    bool
+	URL    string
+	Source string
+}
+
+type playlistCategoryPageGroup struct {
+	Name       string
+	Categories []playlistCategoryPageItem
+}
+
+type playlistCategoryPageSource struct {
+	Source string
+	Name   string
+	Count  int
+	Groups []playlistCategoryPageGroup
+}
+
+type playlistCategoryCurrent struct {
+	Source       string
+	SourceName   string
+	CategoryID   string
+	CategoryName string
+}
+
+func playlistCategorySourcesFromQuery(c *gin.Context) []string {
+	requested := c.QueryArray("sources")
+	if len(requested) == 0 {
+		return core.GetPlaylistCategorySourceNames()
+	}
+
+	supported := make(map[string]bool)
+	for _, source := range core.GetPlaylistCategorySourceNames() {
+		supported[source] = true
+	}
+
+	seen := make(map[string]bool)
+	sources := make([]string, 0, len(requested))
+	for _, source := range requested {
+		source = strings.TrimSpace(source)
+		if source == "" || !supported[source] || seen[source] {
+			continue
+		}
+		seen[source] = true
+		sources = append(sources, source)
+	}
+	if len(sources) == 0 {
+		return core.GetPlaylistCategorySourceNames()
+	}
+	return sources
+}
+
+func loadPlaylistCategoryPageSources(sources []string) ([]playlistCategoryPageSource, string) {
+	type categoryResult struct {
+		source     string
+		categories []model.PlaylistCategory
+		err        error
+	}
+
+	results := make(map[string]categoryResult)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for _, source := range sources {
+		fn := core.GetPlaylistCategoriesFunc(source)
+		if fn == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(src string) {
+			defer wg.Done()
+			categories, err := fn()
+			mu.Lock()
+			results[src] = categoryResult{source: src, categories: categories, err: err}
+			mu.Unlock()
+		}(source)
+	}
+	wg.Wait()
+
+	views := make([]playlistCategoryPageSource, 0, len(sources))
+	failed := make([]string, 0)
+	for _, source := range sources {
+		result, ok := results[source]
+		if !ok {
+			continue
+		}
+		if result.err != nil || len(result.categories) == 0 {
+			failed = append(failed, core.GetSourceDescription(source))
+			continue
+		}
+		views = append(views, buildPlaylistCategoryPageSource(source, result.categories))
+	}
+
+	errorMsg := ""
+	if len(views) == 0 {
+		errorMsg = "没有可展示的歌单分类"
+	} else if len(failed) > 0 {
+		errorMsg = "部分来源分类加载失败：" + strings.Join(failed, "、")
+	}
+	return views, errorMsg
+}
+
+func buildPlaylistCategoryPageSource(source string, categories []model.PlaylistCategory) playlistCategoryPageSource {
+	groupIndex := make(map[string]int)
+	groups := make([]playlistCategoryPageGroup, 0)
+
+	for _, category := range categories {
+		name := strings.TrimSpace(category.Name)
+		if name == "" {
+			continue
+		}
+		groupName := strings.TrimSpace(category.Group)
+		if groupName == "" {
+			groupName = "其他"
+		}
+		idx, ok := groupIndex[groupName]
+		if !ok {
+			idx = len(groups)
+			groupIndex[groupName] = idx
+			groups = append(groups, playlistCategoryPageGroup{Name: groupName})
+		}
+
+		item := playlistCategoryPageItem{
+			ID:     strings.TrimSpace(category.ID),
+			Name:   name,
+			Hot:    category.Hot,
+			URL:    playlistCategoryPlaylistsURL(source, category),
+			Source: source,
+		}
+		groups[idx].Categories = append(groups[idx].Categories, item)
+	}
+
+	count := 0
+	for _, group := range groups {
+		count += len(group.Categories)
+	}
+	return playlistCategoryPageSource{
+		Source: source,
+		Name:   core.GetSourceDescription(source),
+		Count:  count,
+		Groups: groups,
+	}
+}
+
+func playlistCategoryPlaylistsURL(source string, category model.PlaylistCategory) string {
+	values := url.Values{}
+	values.Set("source", source)
+	if id := strings.TrimSpace(category.ID); id != "" {
+		values.Set("category_id", id)
+	}
+	if name := strings.TrimSpace(category.Name); name != "" {
+		values.Set("category_name", name)
+	}
+	return RoutePrefix + "/category_playlists?" + values.Encode()
+}
+
 func RegisterMusicRoutes(api *gin.RouterGroup) {
 
 	api.GET("/", func(c *gin.Context) {
@@ -132,6 +290,50 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		wg.Wait()
 
 		renderIndex(c, nil, allPlaylists, "每日推荐", sources, "", "playlist", "", "", "", false, "", nil)
+	})
+
+	api.GET("/playlist_categories", func(c *gin.Context) {
+		sources := playlistCategorySourcesFromQuery(c)
+		categorySources, errMsg := loadPlaylistCategoryPageSources(sources)
+		c.Set("PlaylistCategorySources", categorySources)
+		renderIndex(c, nil, nil, "", sources, errMsg, "playlist", "", "", "", false, "", nil)
+	})
+
+	api.GET("/category_playlists", func(c *gin.Context) {
+		source := strings.TrimSpace(c.Query("source"))
+		categoryID := strings.TrimSpace(c.Query("category_id"))
+		categoryName := strings.TrimSpace(c.Query("category_name"))
+		if categoryName == "" {
+			categoryName = categoryID
+		}
+		if categoryName == "" {
+			categoryName = "全部"
+		}
+
+		fn := core.GetCategoryPlaylistsFunc(source)
+		if source == "" || fn == nil {
+			renderIndex(c, nil, nil, "", nil, "该源不支持歌单分类", "playlist", "", "", "", false, "", nil)
+			return
+		}
+
+		playlists, err := fn(categoryID, 1, 120)
+		for i := range playlists {
+			playlists[i].Source = source
+		}
+
+		errMsg := ""
+		if err != nil {
+			errMsg = fmt.Sprintf("获取分类歌单失败: %v", err)
+		}
+
+		sourceName := core.GetSourceDescription(source)
+		c.Set("PlaylistCategoryCurrent", playlistCategoryCurrent{
+			Source:       source,
+			SourceName:   sourceName,
+			CategoryID:   categoryID,
+			CategoryName: categoryName,
+		})
+		renderIndex(c, nil, playlists, sourceName+" · "+categoryName, []string{source}, errMsg, "playlist", "", "", "", false, "", nil)
 	})
 
 	api.GET("/search", func(c *gin.Context) {

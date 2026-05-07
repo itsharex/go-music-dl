@@ -850,6 +850,34 @@ function goToRecommend() {
     }
 }
 
+function switchCategorySource(tab) {
+    if (!tab) return;
+    const panelId = tab.getAttribute('data-target');
+    if (!panelId) return;
+    const scope = tab.closest('.category-panel') || document;
+    scope.querySelectorAll('.category-source-tab').forEach(function (t) {
+        t.classList.toggle('is-active', t === tab);
+    });
+    scope.querySelectorAll('.category-source-panel').forEach(function (p) {
+        p.classList.toggle('is-active', p.id === panelId);
+    });
+}
+
+function goToPlaylistCategories() {
+    const selected = [];
+    document.querySelectorAll('.source-checkbox:checked').forEach(cb => {
+        if (cb.dataset.categorySupported === 'true') {
+            selected.push(cb.value);
+        }
+    });
+
+    if (selected.length === 0) {
+        navigateTo(API_ROOT + '/playlist_categories');
+    } else {
+        navigateTo(API_ROOT + '/playlist_categories?sources=' + selected.map(encodeURIComponent).join('&sources='));
+    }
+}
+
 function goToPage(page) {
     const target = parseInt(page, 10);
     if (!Number.isFinite(target) || target < 1) return;

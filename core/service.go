@@ -138,6 +138,8 @@ func (m *CookieManager) GetAll() map[string]string {
 
 type SearchFunc func(keyword string) ([]model.Song, error)
 type SearchPlaylistFunc func(keyword string) ([]model.Playlist, error)
+type PlaylistCategoriesFunc func() ([]model.PlaylistCategory, error)
+type CategoryPlaylistsFunc func(string, int, int) ([]model.Playlist, error)
 
 func GetSearchFunc(source string) SearchFunc {
 	c := CM.Get(source)
@@ -292,6 +294,50 @@ func GetRecommendFunc(source string) func() ([]model.Playlist, error) {
 		return kugou.New(c).GetRecommendedPlaylists
 	case "kuwo":
 		return kuwo.New(c).GetRecommendedPlaylists
+	default:
+		return nil
+	}
+}
+
+func GetPlaylistCategoriesFunc(source string) PlaylistCategoriesFunc {
+	c := CM.Get(source)
+	switch source {
+	case "netease":
+		return netease.New(c).GetPlaylistCategories
+	case "qq":
+		return qq.New(c).GetPlaylistCategories
+	case "kugou":
+		return kugou.New(c).GetPlaylistCategories
+	case "kuwo":
+		return kuwo.New(c).GetPlaylistCategories
+	case "migu":
+		return migu.New(c).GetPlaylistCategories
+	case "joox":
+		return joox.New(c).GetPlaylistCategories
+	case "qianqian":
+		return qianqian.New(c).GetPlaylistCategories
+	default:
+		return nil
+	}
+}
+
+func GetCategoryPlaylistsFunc(source string) CategoryPlaylistsFunc {
+	c := CM.Get(source)
+	switch source {
+	case "netease":
+		return netease.New(c).GetCategoryPlaylists
+	case "qq":
+		return qq.New(c).GetCategoryPlaylists
+	case "kugou":
+		return kugou.New(c).GetCategoryPlaylists
+	case "kuwo":
+		return kuwo.New(c).GetCategoryPlaylists
+	case "migu":
+		return migu.New(c).GetCategoryPlaylists
+	case "joox":
+		return joox.New(c).GetCategoryPlaylists
+	case "qianqian":
+		return qianqian.New(c).GetCategoryPlaylists
 	default:
 		return nil
 	}
@@ -855,6 +901,10 @@ func GetPlaylistSourceNames() []string {
 
 func GetAlbumSourceNames() []string {
 	return []string{"netease", "qq", "kugou", "kuwo", "migu", "jamendo", "joox", "qianqian", "soda"}
+}
+
+func GetPlaylistCategorySourceNames() []string {
+	return []string{"netease", "qq", "kugou", "kuwo", "migu", "qianqian", "joox"}
 }
 
 func GetDefaultSourceNames() []string {
