@@ -47,6 +47,19 @@
                 <p id="setting-download-dir-hint" class="setting-hint" style="margin-left: 0;">选择预设会自动填入路径，也可以手填相对目录或绝对目录。Android 建议使用 <code>/sdcard/Music</code>，便于系统音乐应用识别。</p>
             </div>
             <div class="cookie-item">
+                <label for="setting-download-filename-template">音乐文件名模板</label>
+                <input type="text" id="setting-download-filename-template" placeholder="{name} - {artist}">
+                <p class="setting-hint" style="margin-left: 0;">支持 <code>{name}</code>、<code>{artist}</code>、<code>{album}</code>、<code>{source}</code>、<code>{id}</code>、<code>{ext}</code>。未写 <code>{ext}</code> 时会自动追加扩展名。</p>
+            </div>
+            <div class="cookie-item setting-item">
+                <label class="setting-toggle" for="setting-floating-lyrics">
+                    <input type="checkbox" id="setting-floating-lyrics">
+                    <span class="setting-switch" aria-hidden="true"></span>
+                    <span class="setting-toggle-text">播放音乐时显示悬浮歌词</span>
+                </label>
+                <p class="setting-hint">关闭后，播放音乐时不显示底部悬浮歌词。</p>
+            </div>
+            <div class="cookie-item">
                 <label for="setting-web-page-size">Web 每页条数</label>
                 <input type="number" id="setting-web-page-size" min="1" max="200" step="1" placeholder="默认 50">
                 <p class="setting-hint" style="margin-left: 0;">用于网页分页显示，默认 50。</p>

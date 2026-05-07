@@ -499,6 +499,71 @@ body.batch-mode .song-card { padding-left: 10px; }
     font-size: 12px;
     line-height: 1.45;
 }
+.app-toast-container {
+    position: fixed;
+    right: 18px;
+    bottom: 105px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 11000;
+    pointer-events: none;
+}
+.app-toast {
+    position: relative;
+    width: min(360px, calc(100vw - 36px));
+    padding: 12px 38px 12px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.16);
+    color: var(--text-main);
+    pointer-events: auto;
+    animation: toastIn 0.22s ease-out;
+}
+.app-toast-success { border-left: 4px solid #10b981; }
+.app-toast-warning { border-left: 4px solid #f59e0b; }
+.app-toast-error { border-left: 4px solid #ef4444; }
+.app-toast-info { border-left: 4px solid #3b82f6; }
+.app-toast-title {
+    font-size: 14px;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+.app-toast-message {
+    color: var(--text-sub);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-line;
+    word-break: break-word;
+}
+.app-toast-close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 20px;
+}
+.app-toast-close:hover {
+    background: #f1f5f9;
+    color: #475569;
+}
+.app-toast-hide {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+@keyframes toastIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 .btn-save { width: 100%; padding: 12px; background: var(--primary-gradient); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; margin-top: 10px; font-size: 15px;}
 
 .local-music-modal { max-width: 760px; }
@@ -583,6 +648,11 @@ body.batch-mode .song-card { padding-left: 10px; }
 }
 
 .aplayer.aplayer-fixed { z-index: 10000 !important; }
+
+body.floating-lyrics-disabled .aplayer.aplayer-fixed .aplayer-lrc,
+body.floating-lyrics-disabled .karaoke-lyrics {
+    display: none !important;
+}
 
 body.karaoke-lyrics-active .aplayer.aplayer-fixed .aplayer-lrc {
     display: block !important;

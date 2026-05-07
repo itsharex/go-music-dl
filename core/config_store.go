@@ -14,12 +14,13 @@ import (
 )
 
 const (
-	ConfigDBFile          = "data/settings.db"
-	DefaultWebDownloadDir = "data/downloads"
-	DefaultWebPageSize    = 50
-	DefaultCLIPageSize    = 50
-	DefaultWebConcurrency = 3
-	webSettingsKey        = "web_settings"
+	ConfigDBFile                    = "data/settings.db"
+	DefaultWebDownloadDir           = "data/downloads"
+	DefaultDownloadFilenameTemplate = "{name} - {artist}"
+	DefaultWebPageSize              = 50
+	DefaultCLIPageSize              = 50
+	DefaultWebConcurrency           = 3
+	webSettingsKey                  = "web_settings"
 )
 
 type configKV struct {
@@ -35,16 +36,18 @@ type cookieEntry struct {
 }
 
 type WebSettings struct {
-	EmbedDownload       bool   `json:"embedDownload"`
-	DownloadToLocal     bool   `json:"downloadToLocal"`
-	DownloadDir         string `json:"downloadDir"`
-	WebPageSize         int    `json:"webPageSize"`
-	CliPageSize         int    `json:"cliPageSize"`
-	DownloadConcurrency int    `json:"downloadConcurrency"`
-	VgChangeCover       bool   `json:"vgChangeCover"`
-	VgChangeAudio       bool   `json:"vgChangeAudio"`
-	VgChangeLyric       bool   `json:"vgChangeLyric"`
-	VgExportVideo       bool   `json:"vgExportVideo"`
+	EmbedDownload            bool   `json:"embedDownload"`
+	DownloadToLocal          bool   `json:"downloadToLocal"`
+	DownloadDir              string `json:"downloadDir"`
+	DownloadFilenameTemplate string `json:"downloadFilenameTemplate"`
+	DisableFloatingLyrics    bool   `json:"disableFloatingLyrics"`
+	WebPageSize              int    `json:"webPageSize"`
+	CliPageSize              int    `json:"cliPageSize"`
+	DownloadConcurrency      int    `json:"downloadConcurrency"`
+	VgChangeCover            bool   `json:"vgChangeCover"`
+	VgChangeAudio            bool   `json:"vgChangeAudio"`
+	VgChangeLyric            bool   `json:"vgChangeLyric"`
+	VgExportVideo            bool   `json:"vgExportVideo"`
 }
 
 var (
@@ -142,12 +145,14 @@ func migrateLegacyCookies() error {
 
 func defaultWebSettings() WebSettings {
 	return normalizeWebSettings(WebSettings{
-		EmbedDownload:       false,
-		DownloadToLocal:     false,
-		DownloadDir:         DefaultWebDownloadDir,
-		WebPageSize:         DefaultWebPageSize,
-		CliPageSize:         DefaultCLIPageSize,
-		DownloadConcurrency: DefaultWebConcurrency,
+		EmbedDownload:            false,
+		DownloadToLocal:          false,
+		DownloadDir:              DefaultWebDownloadDir,
+		DownloadFilenameTemplate: DefaultDownloadFilenameTemplate,
+		DisableFloatingLyrics:    false,
+		WebPageSize:              DefaultWebPageSize,
+		CliPageSize:              DefaultCLIPageSize,
+		DownloadConcurrency:      DefaultWebConcurrency,
 	})
 }
 
@@ -155,6 +160,10 @@ func normalizeWebSettings(settings WebSettings) WebSettings {
 	settings.DownloadDir = strings.TrimSpace(settings.DownloadDir)
 	if settings.DownloadDir == "" {
 		settings.DownloadDir = DefaultWebDownloadDir
+	}
+	settings.DownloadFilenameTemplate = strings.TrimSpace(settings.DownloadFilenameTemplate)
+	if settings.DownloadFilenameTemplate == "" {
+		settings.DownloadFilenameTemplate = DefaultDownloadFilenameTemplate
 	}
 	if settings.WebPageSize <= 0 {
 		settings.WebPageSize = DefaultWebPageSize

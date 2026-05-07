@@ -92,6 +92,12 @@ func TestWebSettingsDefaultAndPersist(t *testing.T) {
 	if defaults.DownloadDir != normalizeWebDownloadDir(DefaultWebDownloadDir) {
 		t.Fatalf("default DownloadDir mismatch: got %q want %q", defaults.DownloadDir, normalizeWebDownloadDir(DefaultWebDownloadDir))
 	}
+	if defaults.DownloadFilenameTemplate != DefaultDownloadFilenameTemplate {
+		t.Fatalf("default DownloadFilenameTemplate mismatch: got %q want %q", defaults.DownloadFilenameTemplate, DefaultDownloadFilenameTemplate)
+	}
+	if defaults.DisableFloatingLyrics {
+		t.Fatalf("default DisableFloatingLyrics should be false")
+	}
 	if defaults.WebPageSize != DefaultWebPageSize {
 		t.Fatalf("default WebPageSize mismatch: got %d want %d", defaults.WebPageSize, DefaultWebPageSize)
 	}
@@ -115,32 +121,36 @@ func TestWebSettingsDefaultAndPersist(t *testing.T) {
 	}
 
 	if err := SaveWebSettings(WebSettings{
-		EmbedDownload:       true,
-		DownloadToLocal:     true,
-		DownloadDir:         "",
-		WebPageSize:         100,
-		CliPageSize:         120,
-		DownloadConcurrency: 5,
-		VgChangeCover:       true,
-		VgChangeAudio:       true,
-		VgChangeLyric:       true,
-		VgExportVideo:       true,
+		EmbedDownload:            true,
+		DownloadToLocal:          true,
+		DownloadDir:              "",
+		DownloadFilenameTemplate: "{artist} - {name}.{ext}",
+		DisableFloatingLyrics:    true,
+		WebPageSize:              100,
+		CliPageSize:              120,
+		DownloadConcurrency:      5,
+		VgChangeCover:            true,
+		VgChangeAudio:            true,
+		VgChangeLyric:            true,
+		VgExportVideo:            true,
 	}); err != nil {
 		t.Fatalf("save web settings: %v", err)
 	}
 
 	got := GetWebSettings()
 	want := WebSettings{
-		EmbedDownload:       true,
-		DownloadToLocal:     true,
-		DownloadDir:         normalizeWebDownloadDir(DefaultWebDownloadDir),
-		WebPageSize:         100,
-		CliPageSize:         120,
-		DownloadConcurrency: 5,
-		VgChangeCover:       true,
-		VgChangeAudio:       true,
-		VgChangeLyric:       true,
-		VgExportVideo:       true,
+		EmbedDownload:            true,
+		DownloadToLocal:          true,
+		DownloadDir:              normalizeWebDownloadDir(DefaultWebDownloadDir),
+		DownloadFilenameTemplate: "{artist} - {name}.{ext}",
+		DisableFloatingLyrics:    true,
+		WebPageSize:              100,
+		CliPageSize:              120,
+		DownloadConcurrency:      5,
+		VgChangeCover:            true,
+		VgChangeAudio:            true,
+		VgChangeLyric:            true,
+		VgExportVideo:            true,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("saved settings mismatch\ngot:  %#v\nwant: %#v", got, want)
@@ -156,6 +166,12 @@ func TestWebSettingsDefaultAndPersist(t *testing.T) {
 	got = GetWebSettings()
 	if got.DownloadDir != normalizeWebDownloadDir(customDir) {
 		t.Fatalf("custom download dir mismatch: got %q want %q", got.DownloadDir, normalizeWebDownloadDir(customDir))
+	}
+	if got.DownloadFilenameTemplate != DefaultDownloadFilenameTemplate {
+		t.Fatalf("custom save should fallback DownloadFilenameTemplate to default: got %q want %q", got.DownloadFilenameTemplate, DefaultDownloadFilenameTemplate)
+	}
+	if got.DisableFloatingLyrics {
+		t.Fatalf("custom save should fallback DisableFloatingLyrics to default false: %#v", got)
 	}
 	if got.WebPageSize != DefaultWebPageSize {
 		t.Fatalf("custom save should fallback WebPageSize to default: got %d want %d", got.WebPageSize, DefaultWebPageSize)

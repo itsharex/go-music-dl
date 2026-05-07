@@ -696,12 +696,11 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			return
 		}
 
-		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist, Album: album, Cover: coverURL, Extra: extra}
-		baseFilename := fmt.Sprintf("%s - %s", name, artist)
 		settings := core.GetWebSettings()
+		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist, Album: album, Cover: coverURL, Extra: extra}
 
 		if saveLocal {
-			result, err := core.SaveSongToFile(tempSong, settings.DownloadDir, embedMeta, embedMeta)
+			result, err := core.SaveSongToFileWithTemplate(tempSong, settings.DownloadDir, embedMeta, embedMeta, settings.DownloadFilenameTemplate)
 			if err != nil {
 				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 				return
@@ -721,7 +720,7 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		}
 
 		if embedMeta {
-			result, err := core.DownloadSongData(tempSong, true, true)
+			result, err := core.DownloadSongDataWithTemplate(tempSong, true, true, settings.DownloadFilenameTemplate)
 			if err != nil {
 				c.String(502, "Upstream stream error")
 				return
@@ -761,7 +760,7 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 				return
 			}
 			ext := core.DetectAudioExt(finalData)
-			filename := fmt.Sprintf("%s.%s", baseFilename, ext)
+			filename := core.BuildDownloadFilename(tempSong, ext, settings.DownloadFilenameTemplate)
 			if !streamPlayback {
 				setDownloadHeader(c, filename)
 			}
@@ -793,7 +792,7 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 				ext = "mp3"
 			}
 
-			filename := fmt.Sprintf("%s.%s", baseFilename, ext)
+			filename := core.BuildDownloadFilename(tempSong, ext, settings.DownloadFilenameTemplate)
 			if streamPlayback {
 				c.Header("Content-Type", core.AudioMimeByExt(ext))
 			} else {
@@ -849,7 +848,7 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			ext = "mp3"
 		}
 
-		filename := fmt.Sprintf("%s.%s", baseFilename, ext)
+		filename := core.BuildDownloadFilename(tempSong, ext, settings.DownloadFilenameTemplate)
 		if streamPlayback {
 			contentType := strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Type")))
 			if contentType == "" || strings.HasPrefix(contentType, "application/octet-stream") {

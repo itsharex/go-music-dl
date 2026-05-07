@@ -155,6 +155,11 @@ func TestSettingsModalIncludesDownloadDirPresets(t *testing.T) {
 	html := string(content)
 	for _, want := range []string{
 		`id="setting-download-dir-preset"`,
+		`id="setting-download-filename-template"`,
+		`id="setting-floating-lyrics"`,
+		`{album}`,
+		`{source}`,
+		`{ext}`,
 		`PC 默认：data/downloads`,
 		`PC 示例：D:/Music/Downloads`,
 		`Android 默认：/sdcard/Music`,

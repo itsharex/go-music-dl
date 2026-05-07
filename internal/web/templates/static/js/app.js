@@ -27,6 +27,8 @@ let webSettings = {
     embedDownload: false,
     downloadToLocal: false,
     downloadDir: 'data/downloads',
+    downloadFilenameTemplate: '{name} - {artist}',
+    disableFloatingLyrics: false,
     webPageSize: DEFAULT_WEB_PAGE_SIZE,
     cliPageSize: DEFAULT_CLI_PAGE_SIZE,
     vgChangeCover: false,
@@ -40,6 +42,8 @@ function normalizeWebSettings(raw) {
         embedDownload: false,
         downloadToLocal: false,
         downloadDir: 'data/downloads',
+        downloadFilenameTemplate: '{name} - {artist}',
+        disableFloatingLyrics: false,
         webPageSize: DEFAULT_WEB_PAGE_SIZE,
         cliPageSize: DEFAULT_CLI_PAGE_SIZE,
         vgChangeCover: false,
@@ -60,6 +64,12 @@ function normalizeWebSettings(raw) {
     }
     if (typeof raw.downloadDir === 'string' && raw.downloadDir.trim() !== '') {
         next.downloadDir = raw.downloadDir.trim();
+    }
+    if (typeof raw.downloadFilenameTemplate === 'string' && raw.downloadFilenameTemplate.trim() !== '') {
+        next.downloadFilenameTemplate = raw.downloadFilenameTemplate.trim();
+    }
+    if (typeof raw.disableFloatingLyrics === 'boolean') {
+        next.disableFloatingLyrics = raw.disableFloatingLyrics;
     }
     if (Number.isInteger(raw.webPageSize) && raw.webPageSize > 0) {
         next.webPageSize = Math.min(raw.webPageSize, 200);
@@ -114,6 +124,45 @@ function applyVideoGenFeatureVisibility() {
     });
 }
 
+function floatingLyricsEnabled() {
+    return !webSettings.disableFloatingLyrics;
+}
+
+function syncFloatingLyricsSetting() {
+    document.body.classList.toggle('floating-lyrics-disabled', !floatingLyricsEnabled());
+    if (!window.KaraokeLyrics) return;
+    if (!floatingLyricsEnabled()) {
+        window.KaraokeLyrics.hide();
+        return;
+    }
+    if (window.ap?.list?.audios) {
+        window.ap.list.audios.forEach(audio => {
+            if (!audio || audio.raw_lrc || audio.lrc || !audio.custom_id) return;
+            const lyricURLs = lyricURLsForSong({
+                id: audio.custom_id,
+                source: audio.source || '',
+                name: audio.name || '',
+                artist: audio.artist || '',
+                album: audio.album || '',
+                duration: audio.duration || 0,
+                extra: audio.extra || ''
+            });
+            audio.lrc = lyricURLs.line;
+            audio.raw_lrc = lyricURLs.auto;
+        });
+    }
+    if (window.ap?.audio && !window.ap.audio.paused) {
+        window.KaraokeLyrics.load(getCurrentAPlayerAudio());
+    }
+}
+
+function lyricURLsForPlayback(song) {
+    if (!floatingLyricsEnabled()) {
+        return { line: '', auto: '', download: lyricURLsForSong(song).download };
+    }
+    return lyricURLsForSong(song);
+}
+
 function syncDownloadDirPresetFromInput() {
     const presetSelect = document.getElementById('setting-download-dir-preset');
     const dirInput = document.getElementById('setting-download-dir');
@@ -161,6 +210,16 @@ function applyWebSettings(settings) {
     bindDownloadDirPresetEvents();
     syncDownloadDirPresetFromInput();
 
+    const filenameTemplateInput = document.getElementById('setting-download-filename-template');
+    if (filenameTemplateInput) {
+        filenameTemplateInput.value = webSettings.downloadFilenameTemplate;
+    }
+
+    const floatingLyricsToggle = document.getElementById('setting-floating-lyrics');
+    if (floatingLyricsToggle) {
+        floatingLyricsToggle.checked = !webSettings.disableFloatingLyrics;
+    }
+
     const webPageSizeInput = document.getElementById('setting-web-page-size');
     if (webPageSizeInput) {
         webPageSizeInput.value = String(webSettings.webPageSize || DEFAULT_WEB_PAGE_SIZE);
@@ -192,6 +251,7 @@ function applyWebSettings(settings) {
     }
 
     applyVideoGenFeatureVisibility();
+    syncFloatingLyricsSetting();
     refreshDownloadLinks();
 }
 
@@ -343,6 +403,34 @@ function buildBatchFailureMessage(failures, title) {
     return message;
 }
 
+function showToast(title, message = '', type = 'info', duration = 5000) {
+    let container = document.getElementById('app-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'app-toast-container';
+        container.className = 'app-toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `app-toast app-toast-${type}`;
+    toast.innerHTML = [
+        '<button type="button" class="app-toast-close" aria-label="关闭提示">&times;</button>',
+        `<div class="app-toast-title">${escapeHTML(title)}</div>`,
+        message ? `<div class="app-toast-message">${escapeHTML(message)}</div>` : ''
+    ].join('');
+    container.appendChild(toast);
+
+    const close = () => {
+        toast.classList.add('app-toast-hide');
+        window.setTimeout(() => toast.remove(), 220);
+    };
+    toast.querySelector('.app-toast-close')?.addEventListener('click', close);
+    if (duration > 0) {
+        window.setTimeout(close, duration);
+    }
+}
+
 function inferExtFromContentType(contentType) {
     const raw = String(contentType || '').toLowerCase().split(';')[0].trim();
     switch (raw) {
@@ -426,11 +514,11 @@ async function handleDownloadClick(link) {
     try {
         if (webSettings.downloadToLocal) {
             const data = await requestLocalDownload(link.href);
-            let message = `已保存到:\n${data.path || webSettings.downloadDir}`;
+            let message = data.path || webSettings.downloadDir;
             if (data.warning) {
-                message += `\n\n提示: ${data.warning}`;
+                message += `\n提示: ${data.warning}`;
             }
-            alert(message);
+            showToast('下载完成', message, data.warning ? 'warning' : 'success');
             return true;
         }
 
@@ -439,7 +527,7 @@ async function handleDownloadClick(link) {
             return true;
         }
     } catch (error) {
-        alert(error.message || '下载失败');
+        showToast('下载失败', error.message || '下载失败', 'error');
     } finally {
         link.style.pointerEvents = '';
         link.style.opacity = '';
@@ -998,6 +1086,8 @@ function saveCookies() {
         embedDownload: !!document.getElementById('setting-embed-download')?.checked,
         downloadToLocal: !!document.getElementById('setting-download-to-local')?.checked,
         downloadDir: document.getElementById('setting-download-dir')?.value || '',
+        downloadFilenameTemplate: document.getElementById('setting-download-filename-template')?.value || '',
+        disableFloatingLyrics: !document.getElementById('setting-floating-lyrics')?.checked,
         webPageSize: parsePositiveInt(webPageSizeInput?.value, DEFAULT_WEB_PAGE_SIZE),
         cliPageSize: parsePositiveInt(cliPageSizeInput?.value, DEFAULT_CLI_PAGE_SIZE),
         vgChangeCover: !!document.getElementById('setting-vg-change-cover')?.checked,
@@ -1679,6 +1769,11 @@ const KaraokeLyrics = (() => {
 
     async function load(audio) {
         ensureContainer();
+        if (!floatingLyricsEnabled()) {
+            currentKey = '';
+            hide();
+            return;
+        }
         const key = `${audio?.source || ''}:${audio?.custom_id || ''}:${audio?.raw_lrc || audio?.lrc || ''}`;
         if (!audio || !key.trim()) {
             currentKey = '';
@@ -1713,6 +1808,7 @@ const KaraokeLyrics = (() => {
     }
 
     function update() {
+        if (!floatingLyricsEnabled()) return;
         if (!visible || !ap?.audio || groups.length === 0) return;
         const ms = Math.max(0, (Number(ap.audio.currentTime) || 0) * 1000);
         let nextIndex = -1;
@@ -1742,6 +1838,10 @@ const KaraokeLyrics = (() => {
     }
 
     function handlePlayStateChange(isPlaying) {
+        if (!floatingLyricsEnabled()) {
+            hide();
+            return;
+        }
         if (isPlaying) {
             startLoop();
             return;
@@ -2173,7 +2273,7 @@ function syncSongToAPlayer(oldId, newSong) {
         audio.album = newSong.album || '';
         audio.cover = newSong.cover;
         audio.url = buildStreamURL(newSong.id, newSong.source, newSong.name, newSong.artist, newSong.album || '', newSong.cover || '', newSong.extra ? JSON.stringify(newSong.extra) : '');
-        const lyricURLs = lyricURLsForSong(newSong);
+        const lyricURLs = lyricURLsForPlayback(newSong);
         audio.lrc = lyricURLs.line;
         audio.raw_lrc = lyricURLs.auto;
         audio.custom_id = newSong.id; 
@@ -2246,7 +2346,7 @@ function playAllAndJumpTo(btn) {
         const ds = card.dataset;
         const song = songFromCard(card);
         if (!song) return;
-        const lyricURLs = lyricURLsForSong(song);
+        const lyricURLs = lyricURLsForPlayback(song);
         let coverUrl = ds.cover || '';
         const imgEl = card.querySelector('.cover-wrapper img');
         if (imgEl && imgEl.src) coverUrl = imgEl.src;
@@ -2477,7 +2577,7 @@ async function batchDownload() {
         }
         message += buildBatchFailureMessage(failures, '失败');
 
-        alert(message);
+        showToast(failures.length > 0 ? '下载部分完成' : '下载完成', message, failures.length > 0 ? 'warning' : 'success', 8000);
     } finally {
         if (batchDl) {
             batchDl.innerHTML = originalBatchDlHTML;

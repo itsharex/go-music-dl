@@ -22,6 +22,10 @@ type DownloadedSong struct {
 }
 
 func DownloadSongData(song *model.Song, withCover bool, withLyrics bool) (*DownloadedSong, error) {
+	return DownloadSongDataWithTemplate(song, withCover, withLyrics, DefaultDownloadFilenameTemplate)
+}
+
+func DownloadSongDataWithTemplate(song *model.Song, withCover bool, withLyrics bool, filenameTemplate string) (*DownloadedSong, error) {
 	if song == nil {
 		return nil, errors.New("song is nil")
 	}
@@ -89,13 +93,17 @@ func DownloadSongData(song *model.Song, withCover bool, withLyrics bool) (*Downl
 		Data:        finalData,
 		Ext:         ext,
 		ContentType: AudioMimeByExt(ext),
-		Filename:    fmt.Sprintf("%s - %s.%s", normalized.Name, normalized.Artist, ext),
+		Filename:    BuildDownloadFilename(&normalized, ext, filenameTemplate),
 		Warning:     warning,
 	}, nil
 }
 
 func SaveSongToFile(song *model.Song, outDir string, withCover bool, withLyrics bool) (*DownloadedSong, error) {
-	result, err := DownloadSongData(song, withCover, withLyrics)
+	return SaveSongToFileWithTemplate(song, outDir, withCover, withLyrics, DefaultDownloadFilenameTemplate)
+}
+
+func SaveSongToFileWithTemplate(song *model.Song, outDir string, withCover bool, withLyrics bool, filenameTemplate string) (*DownloadedSong, error) {
+	result, err := DownloadSongDataWithTemplate(song, withCover, withLyrics, filenameTemplate)
 	if err != nil {
 		return nil, err
 	}
@@ -110,16 +118,7 @@ func SaveSongToFile(song *model.Song, outDir string, withCover bool, withLyrics 
 		return nil, err
 	}
 
-	name := "Unknown"
-	artist := "Unknown"
-	if song != nil && strings.TrimSpace(song.Name) != "" {
-		name = strings.TrimSpace(song.Name)
-	}
-	if song != nil && strings.TrimSpace(song.Artist) != "" {
-		artist = strings.TrimSpace(song.Artist)
-	}
-
-	fileName := fmt.Sprintf("%s - %s.%s", utils.SanitizeFilename(name), utils.SanitizeFilename(artist), result.Ext)
+	fileName := result.Filename
 	filePath := filepath.Join(targetDir, fileName)
 	if err := os.WriteFile(filePath, result.Data, 0644); err != nil {
 		return nil, err
@@ -128,6 +127,51 @@ func SaveSongToFile(song *model.Song, outDir string, withCover bool, withLyrics 
 	result.Filename = fileName
 	result.SavedPath = filePath
 	return result, nil
+}
+
+func BuildDownloadFilename(song *model.Song, ext string, filenameTemplate string) string {
+	template := strings.TrimSpace(filenameTemplate)
+	if template == "" {
+		template = DefaultDownloadFilenameTemplate
+	}
+	ext = strings.TrimSpace(strings.TrimPrefix(ext, "."))
+
+	name := "Unknown"
+	artist := "Unknown"
+	album := ""
+	source := ""
+	id := ""
+	if song != nil {
+		if strings.TrimSpace(song.Name) != "" {
+			name = strings.TrimSpace(song.Name)
+		}
+		if strings.TrimSpace(song.Artist) != "" {
+			artist = strings.TrimSpace(song.Artist)
+		}
+		album = strings.TrimSpace(song.Album)
+		source = strings.TrimSpace(song.Source)
+		id = strings.TrimSpace(song.ID)
+	}
+
+	hasExtToken := strings.Contains(template, "{ext}")
+	rendered := strings.NewReplacer(
+		"{name}", name,
+		"{artist}", artist,
+		"{album}", album,
+		"{source}", source,
+		"{id}", id,
+		"{ext}", ext,
+	).Replace(template)
+	rendered = strings.TrimSpace(rendered)
+	if rendered == "" {
+		rendered = strings.TrimSpace(DefaultDownloadFilenameTemplate)
+		rendered = strings.NewReplacer("{name}", name, "{artist}", artist, "{album}", album, "{source}", source, "{id}", id, "{ext}", ext).Replace(rendered)
+	}
+	if !hasExtToken && ext != "" {
+		rendered += "." + ext
+	}
+
+	return utils.SanitizeFilename(rendered)
 }
 
 func fetchSongAudio(song *model.Song) ([]byte, string, error) {
