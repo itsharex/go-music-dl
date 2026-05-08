@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -78,6 +79,11 @@ func RegisterQRLoginRoutes(api *gin.RouterGroup) {
 				result.Cookie = cookie
 				core.CM.SetAll(map[string]string{source: cookie})
 				core.CM.Save()
+				if result.Extra == nil {
+					result.Extra = make(map[string]string)
+				}
+				result.Extra["cookie_saved"] = "true"
+				result.Extra["cookie_length"] = strconv.Itoa(len(cookie))
 			}
 		}
 		c.JSON(http.StatusOK, result)

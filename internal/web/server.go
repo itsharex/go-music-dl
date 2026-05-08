@@ -157,6 +157,9 @@ func playlistDetailURL(root string, searchType string, playlist model.Playlist) 
 	if strings.TrimSpace(playlist.Source) == "local" {
 		return fmt.Sprintf("%s/collection?id=%s", root, url.QueryEscape(playlist.ID))
 	}
+	if playlistExtraValue(playlist, "external_only") == "true" && strings.TrimSpace(playlist.Link) != "" {
+		return playlist.Link
+	}
 
 	route := "playlist"
 	contentType := collectionContentPlaylist

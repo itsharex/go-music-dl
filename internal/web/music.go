@@ -586,6 +586,9 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			errMsg = fmt.Sprintf("获取歌单失败: %v", err)
 		}
 		playlistLink := core.GetOriginalLink(src, id, "playlist")
+		if link := strings.TrimSpace(c.Query("link")); link != "" {
+			playlistLink = link
+		}
 		importCollection := importCollectionFromQuery(c, collectionContentPlaylist, src, id, playlistLink, len(songs))
 		renderIndex(c, songs, nil, "", []string{src}, errMsg, "playlist", playlistLink, "", "", false, "", importCollection)
 	})
