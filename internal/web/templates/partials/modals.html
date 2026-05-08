@@ -12,8 +12,17 @@
                     <label>{{ $source }}</label>
                     <div class="cookie-input-row">
                         <input type="text" id="cookie-{{$source}}" placeholder="在此粘贴 Cookie...">
+                        {{ if eq $source "qq" }}
+                        {{ if index $.QRLoginSupported "qq" }}
+                        <button type="button" class="cookie-qr-btn" onclick="startQRLogin('qq')"><i class="fa-brands fa-qq"></i> QQ扫码</button>
+                        {{ end }}
+                        {{ if index $.QRLoginSupported "qq_wx" }}
+                        <button type="button" class="cookie-qr-btn cookie-qr-btn-wx" onclick="startQRLogin('qq_wx')"><i class="fa-brands fa-weixin"></i> 微信扫码</button>
+                        {{ end }}
+                        {{ else }}
                         {{ if index $.QRLoginSupported $source }}
                         <button type="button" class="cookie-qr-btn" onclick="startQRLogin('{{$source}}')"><i class="fa-solid fa-qrcode"></i> 扫码</button>
+                        {{ end }}
                         {{ end }}
                     </div>
                 </div>

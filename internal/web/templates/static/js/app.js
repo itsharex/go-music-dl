@@ -1080,8 +1080,13 @@ function queueInspectSong(card, delay = INSPECT_REQUEST_DELAY_MS) {
 const QR_LOGIN_SOURCE_LABELS = {
     netease: '网易云音乐',
     qq: 'QQ音乐',
+    qq_wx: 'QQ音乐微信',
     kugou: '酷狗音乐',
     bilibili: 'Bilibili'
+};
+
+const QR_LOGIN_COOKIE_SOURCES = {
+    qq_wx: 'qq'
 };
 
 let qrLoginState = {
@@ -1093,6 +1098,10 @@ let qrLoginState = {
 
 function qrLoginSourceLabel(source) {
     return QR_LOGIN_SOURCE_LABELS[source] || source;
+}
+
+function qrLoginCookieSource(source) {
+    return QR_LOGIN_COOKIE_SOURCES[source] || source;
 }
 
 function clearQRLoginPoll() {
@@ -1128,7 +1137,7 @@ function resetQRLoginView(source) {
         image.removeAttribute('src');
     }
     setQRLoginLoading(true);
-    setQRLoginStatus('请使用对应音乐 App 扫码登录');
+    setQRLoginStatus(source === 'qq_wx' ? '请使用微信扫码登录' : '请使用对应音乐 App 扫码登录');
 }
 
 function closeQRLoginModal() {
@@ -1166,7 +1175,7 @@ function startQRLogin(source) {
         .then(session => {
             qrLoginState.key = String(session.key || '');
             renderQRLoginSession(session);
-            setQRLoginStatus('二维码已生成，请打开 App 扫码');
+            setQRLoginStatus(source === 'qq_wx' ? '二维码已生成，请打开微信扫码' : '二维码已生成，请打开 App 扫码');
             pollQRLogin();
             qrLoginState.pollTimer = window.setInterval(pollQRLogin, 2200);
         })
@@ -1231,7 +1240,7 @@ function pollQRLogin() {
             if (status === 'success') {
                 clearQRLoginPoll();
                 const cookie = cookieFromQRLoginResult(result);
-                const input = document.getElementById(`cookie-${qrLoginState.source}`);
+                const input = document.getElementById(`cookie-${qrLoginCookieSource(qrLoginState.source)}`);
                 if (input && cookie) input.value = cookie;
                 setQRLoginStatus('登录成功，Cookie 已保存', 'success');
                 showToast('扫码登录成功', `${qrLoginSourceLabel(qrLoginState.source)} Cookie 已保存`, 'success');

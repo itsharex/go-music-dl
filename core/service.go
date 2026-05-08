@@ -352,6 +352,8 @@ func GetQRLoginCreateFunc(source string) QRLoginCreateFunc {
 		return netease.CreateQRLogin
 	case "qq":
 		return qq.CreateQRLogin
+	case "qq_wx":
+		return qq.CreateWXQRLogin
 	case "kugou":
 		return kugou.CreateQRLogin
 	case "bilibili":
@@ -367,6 +369,8 @@ func GetQRLoginCheckFunc(source string) QRLoginCheckFunc {
 		return netease.CheckQRLogin
 	case "qq":
 		return qq.CheckQRLogin
+	case "qq_wx":
+		return qq.CheckWXQRLogin
 	case "kugou":
 		return kugou.CheckQRLogin
 	case "bilibili":
@@ -377,7 +381,7 @@ func GetQRLoginCheckFunc(source string) QRLoginCheckFunc {
 }
 
 func GetQRLoginSourceNames() []string {
-	return []string{"netease", "qq", "kugou", "bilibili"}
+	return []string{"netease", "qq", "qq_wx", "kugou", "bilibili"}
 }
 
 func GetUserPlaylistsFunc(source string) UserPlaylistsFunc {
@@ -602,6 +606,9 @@ func GetOriginalLink(source, id, typeStr string) string {
 	case "qq":
 		if typeStr == "album" {
 			return "https://y.qq.com/n/ryqq/albumDetail/" + id
+		}
+		if strings.HasPrefix(id, "profile:") {
+			return "https://y.qq.com/n/ryqq/profile"
 		}
 		if typeStr == "playlist" {
 			return "https://y.qq.com/n/ryqq/playlist/" + id

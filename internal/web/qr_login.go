@@ -40,6 +40,13 @@ func qrLoginCookieString(result *model.QRLoginResult) string {
 	return strings.Join(parts, "; ")
 }
 
+func qrLoginCookieSource(source string) string {
+	if source == "qq_wx" {
+		return "qq"
+	}
+	return source
+}
+
 func RegisterQRLoginRoutes(api *gin.RouterGroup) {
 	api.POST("/qr_login/:source", func(c *gin.Context) {
 		source := strings.TrimSpace(c.Param("source"))
@@ -76,13 +83,15 @@ func RegisterQRLoginRoutes(api *gin.RouterGroup) {
 		if result != nil && result.Status == model.QRLoginStatusSuccess {
 			cookie := qrLoginCookieString(result)
 			if cookie != "" {
+				cookieSource := qrLoginCookieSource(source)
 				result.Cookie = cookie
-				core.CM.SetAll(map[string]string{source: cookie})
+				core.CM.SetAll(map[string]string{cookieSource: cookie})
 				core.CM.Save()
 				if result.Extra == nil {
 					result.Extra = make(map[string]string)
 				}
 				result.Extra["cookie_saved"] = "true"
+				result.Extra["cookie_source"] = cookieSource
 				result.Extra["cookie_length"] = strconv.Itoa(len(cookie))
 			}
 		}
