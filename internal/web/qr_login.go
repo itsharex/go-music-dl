@@ -2,12 +2,42 @@ package web
 
 import (
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/guohuiyuan/go-music-dl/core"
 	"github.com/guohuiyuan/music-lib/model"
 )
+
+func qrLoginCookieString(result *model.QRLoginResult) string {
+	if result == nil {
+		return ""
+	}
+	if cookie := strings.TrimSpace(result.Cookie); cookie != "" {
+		return cookie
+	}
+	if len(result.Cookies) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(result.Cookies))
+	for k := range result.Cookies {
+		if strings.TrimSpace(k) == "" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		v := strings.TrimSpace(result.Cookies[k])
+		if v == "" {
+			continue
+		}
+		parts = append(parts, k+"="+v)
+	}
+	return strings.Join(parts, "; ")
+}
 
 func RegisterQRLoginRoutes(api *gin.RouterGroup) {
 	api.POST("/qr_login/:source", func(c *gin.Context) {
@@ -42,9 +72,13 @@ func RegisterQRLoginRoutes(api *gin.RouterGroup) {
 			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 			return
 		}
-		if result != nil && result.Status == model.QRLoginStatusSuccess && strings.TrimSpace(result.Cookie) != "" {
-			core.CM.SetAll(map[string]string{source: result.Cookie})
-			core.CM.Save()
+		if result != nil && result.Status == model.QRLoginStatusSuccess {
+			cookie := qrLoginCookieString(result)
+			if cookie != "" {
+				result.Cookie = cookie
+				core.CM.SetAll(map[string]string{source: cookie})
+				core.CM.Save()
+			}
 		}
 		c.JSON(http.StatusOK, result)
 	})

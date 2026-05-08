@@ -54,6 +54,21 @@
                         {{ if .Creator }}<div class="playlist-author"><i class="fa-regular fa-user"></i> {{ .Creator }}</div>{{ end }}
                         <div class="playlist-card-actions">
                             <div class="playlist-count">{{ if gt .TrackCount 0 }}共 {{ .TrackCount }} 首{{ else }}进入查看{{ end }}</div>
+                            <button type="button"
+                                    class="ctrl-btn primary"
+                                    title="导入到本地歌单列表，保存为外部导入歌单；仅保留元数据，不保存具体歌曲明细。"
+                                    data-name="{{.Name}}"
+                                    data-description="{{.Description}}"
+                                    data-cover="{{.Cover}}"
+                                    data-creator="{{.Creator}}"
+                                    data-track-count="{{.TrackCount}}"
+                                    data-source="{{.Source}}"
+                                    data-external-id="{{.ID}}"
+                                    data-link="{{.Link}}"
+                                    data-content-type="playlist"
+                                    onclick="event.stopPropagation(); importCollectionFromButton(this)">
+                                <i class="fa-solid fa-download"></i> 导入本地
+                            </button>
                         </div>
                     </div>
                 </div>
