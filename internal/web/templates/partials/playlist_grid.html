@@ -32,7 +32,7 @@
         <div class="playlist-card" onclick="navigateTo('{{ $detailURL }}')">
             <div class="playlist-cover" onclick="event.stopPropagation(); navigateTo('{{ $detailURL }}')">
                 <img src="{{ .Cover }}" loading="lazy" onerror="this.src='https://via.placeholder.com/400?text=Cover'">
-                <span class="tag {{ if eq .Source "local" }}tag-local{{ else }}tag-src{{ end }}">
+                <span class="tag {{ if eq .Source "local" }}tag-local{{ else }}tag-src{{ end }}" style="position:absolute; top:5px; right:5px; margin:0; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
                     {{ if eq .Source "local" }}
                         {{ if eq $collectionKind "imported" }}外部导入{{ else }}自建歌单{{ end }}
                     {{ else }}
