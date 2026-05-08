@@ -328,6 +328,9 @@ function buildLyricRequestURL(song, endpoint = 'lyric', format = 'auto') {
     if (extraValue && extraValue !== '{}' && extraValue !== 'null') {
         params.set('extra', extraValue);
     }
+    if (endpoint === 'download_lrc' && webSettings.downloadToLocal) {
+        params.set('save_local', '1');
+    }
 
     return `${API_ROOT}/${endpoint}?${params.toString()}`;
 }
@@ -364,15 +367,55 @@ function updateLyricButton(link) {
     link.href = lyricURLsForSong(song).download;
 }
 
+function buildCoverDownloadURL(song) {
+    const source = String(song?.source || '');
+    const params = new URLSearchParams();
+    if (isLocalMusicSourceValue(source)) {
+        params.set('id', String(song?.id || ''));
+        params.set('download', '1');
+        params.set('name', String(song?.name || ''));
+        params.set('artist', String(song?.artist || ''));
+        if (webSettings.downloadToLocal) {
+            params.set('save_local', '1');
+        }
+        return `${API_ROOT}/local_music/cover?${params.toString()}`;
+    }
+
+    params.set('url', String(song?.cover || 'https://via.placeholder.com/600?text=No+Cover'));
+    params.set('name', String(song?.name || ''));
+    params.set('artist', String(song?.artist || ''));
+    if (webSettings.downloadToLocal) {
+        params.set('save_local', '1');
+    }
+    return `${API_ROOT}/download_cover?${params.toString()}`;
+}
+
+function updateCoverButton(link) {
+    if (!link) return;
+
+    const card = link.closest('.song-card');
+    const song = songFromCard(card);
+    if (!song) return;
+
+    link.href = buildCoverDownloadURL(song);
+}
+
 function refreshDownloadLinks(root = document) {
     root.querySelectorAll('.song-card').forEach(card => {
         updateDownloadButton(card.querySelector('.btn-download'));
         updateLyricButton(card.querySelector('.btn-lyric'));
+        updateCoverButton(card.querySelector('.btn-cover'));
     });
 }
 
+function withSaveLocalParam(url) {
+    const target = new URL(String(url || ''), window.location.href);
+    target.searchParams.set('save_local', '1');
+    return target.toString();
+}
+
 async function requestLocalDownload(url) {
-    const response = await fetch(url, {
+    const response = await fetch(withSaveLocalParam(url), {
         headers: {
             'Accept': 'application/json'
         }
@@ -807,9 +850,10 @@ function bindPageNavigationEvents() {
     pageNavigationEventsBound = true;
 
     document.addEventListener('click', async function(event) {
-        const link = event.target.closest('.btn-download');
+        const link = event.target.closest('.btn-download, .btn-lyric, .btn-cover');
         if (!link) return;
-        if (!webSettings.downloadToLocal && !webSettings.embedDownload) return;
+        const isSongDownload = link.classList.contains('btn-download');
+        if (!webSettings.downloadToLocal && !(isSongDownload && webSettings.embedDownload)) return;
         event.preventDefault();
         await handleDownloadClick(link);
     });
@@ -2667,13 +2711,7 @@ function updateCardWithSong(card, song, options = {}) {
 
     const coverBtn = card.querySelector('.btn-cover');
     if (coverBtn) {
-        if (isLocalMusicSourceValue(song.source)) {
-            coverBtn.href = `${API_ROOT}/local_music/cover?id=${encodeURIComponent(song.id)}&download=1&name=${encodeURIComponent(song.name || '')}&artist=${encodeURIComponent(song.artist || '')}`;
-        } else {
-            // Keep the cover download action usable after source switching.
-            let targetCoverUrl = song.cover || 'https://via.placeholder.com/600?text=No+Cover';
-            coverBtn.href = `${API_ROOT}/download_cover?url=${encodeURIComponent(targetCoverUrl)}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
-        }
+        coverBtn.href = buildCoverDownloadURL(song);
     }
 
     const sizeTag = card.querySelector('[id^="size-"]');

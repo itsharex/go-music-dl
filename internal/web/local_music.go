@@ -111,6 +111,10 @@ func RegisterLocalMusicRoutes(api *gin.RouterGroup) {
 			c.Status(http.StatusNotFound)
 			return
 		}
+		if shouldSaveWebAssetToLocal(c) {
+			saveWebAssetResponse(c, localMusicCoverFilename(track, ext), data)
+			return
+		}
 		if c.Query("download") == "1" {
 			setDownloadHeader(c, localMusicCoverFilename(track, ext))
 		}
@@ -850,6 +854,10 @@ func serveLocalMusicLyric(c *gin.Context, song *model.Song, download bool) {
 	lyrics = formatLyricForMode(lyrics, c.DefaultQuery("format", "auto"))
 	c.Header("X-Lyric-Format", classifyLyricFormat(lyrics))
 	if download {
+		if shouldSaveWebAssetToLocal(c) {
+			saveWebAssetResponse(c, localMusicLyricFilename(track), []byte(lyrics))
+			return
+		}
 		setDownloadHeader(c, localMusicLyricFilename(track))
 	}
 	c.String(http.StatusOK, lyrics)

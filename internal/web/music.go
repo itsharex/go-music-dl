@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -990,6 +992,10 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		c.Header("X-Lyric-Format", classifyLyricFormat(lrc))
 
 		filename := fmt.Sprintf("%s - %s.lrc", name, artist)
+		if shouldSaveWebAssetToLocal(c) {
+			saveWebAssetResponse(c, filename, []byte(lrc))
+			return
+		}
 		setDownloadHeader(c, filename)
 		c.String(200, lrc)
 	})
@@ -1002,6 +1008,10 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		resp, err := utils.Get(u, utils.WithHeader("User-Agent", core.UA_Common))
 		if err == nil {
 			filename := fmt.Sprintf("%s - %s.jpg", c.Query("name"), c.Query("artist"))
+			if shouldSaveWebAssetToLocal(c) {
+				saveWebAssetResponse(c, filename, resp)
+				return
+			}
 			setDownloadHeader(c, filename)
 			c.Data(200, "image/jpeg", resp)
 		}
@@ -1046,6 +1056,51 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		}
 		c.String(200, "[00:00.00] 纯音乐 / 无歌词")
 	})
+}
+
+func shouldSaveWebAssetToLocal(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	return strings.TrimSpace(c.Query("save_local")) == "1"
+}
+
+func saveWebAssetResponse(c *gin.Context, filename string, data []byte) {
+	savedPath, savedFilename, err := saveWebAssetToLocal(filename, data)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "ok",
+		"saved":    true,
+		"path":     savedPath,
+		"filename": savedFilename,
+	})
+}
+
+func saveWebAssetToLocal(filename string, data []byte) (string, string, error) {
+	if len(data) == 0 {
+		return "", "", fmt.Errorf("empty file data")
+	}
+	settings := core.GetWebSettings()
+	targetDir := strings.TrimSpace(settings.DownloadDir)
+	if targetDir == "" {
+		targetDir = core.DefaultWebDownloadDir
+	}
+	targetDir = filepath.Clean(targetDir)
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return "", "", err
+	}
+	savedFilename := utils.SanitizeFilename(strings.TrimSpace(filename))
+	if savedFilename == "" {
+		savedFilename = "download"
+	}
+	savedPath := filepath.Join(targetDir, savedFilename)
+	if err := os.WriteFile(savedPath, data, 0644); err != nil {
+		return "", "", err
+	}
+	return savedPath, savedFilename, nil
 }
 
 func lyricSongFromQuery(c *gin.Context) *model.Song {
