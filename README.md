@@ -1,5 +1,7 @@
 # Go Music DL
 
+> ⭐ 如果这个项目正在帮你省时间，欢迎顺手点一个 Star。Star 越多，作者越能确认这个工具确实有人在用，也会更有动力优先修复失效站点、适配新站点和更新版本。
+
 <p align="center">
   <img src="./internal/web/templates/static/images/icon.png" alt="Music Downloader Icon" width="220" />
 </p>
