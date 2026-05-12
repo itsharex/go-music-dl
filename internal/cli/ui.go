@@ -33,6 +33,7 @@ import (
 	"github.com/guohuiyuan/music-lib/qianqian"
 	"github.com/guohuiyuan/music-lib/qq"
 	"github.com/guohuiyuan/music-lib/soda"
+	"github.com/guohuiyuan/music-lib/apple"
 	"github.com/guohuiyuan/music-lib/utils"
 )
 
@@ -279,6 +280,8 @@ func getParseFunc(source string) func(string) (*model.Song, error) {
 		return joox.New(c).Parse
 	case "qianqian":
 		return qianqian.New(c).Parse
+	case "apple":
+		return apple.New(c).Parse
 	default:
 		return nil
 	}
@@ -310,6 +313,8 @@ func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error)
 		return soda.New(c).SearchPlaylist
 	case "fivesing":
 		return fivesing.New(c).SearchPlaylist
+	case "apple":
+		return apple.New(c).SearchPlaylist
 	default:
 		return nil
 	}
@@ -336,6 +341,8 @@ func getAlbumSearchFunc(source string) func(string) ([]model.Playlist, error) {
 		return qianqian.New(c).SearchAlbum
 	case "soda":
 		return soda.New(c).SearchAlbum
+	case "apple":
+		return apple.New(c).SearchAlbum
 	default:
 		return nil
 	}
@@ -367,6 +374,8 @@ func getPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
 		return soda.New(c).GetPlaylistSongs
 	case "fivesing":
 		return fivesing.New(c).GetPlaylistSongs
+	case "apple":
+		return apple.New(c).GetPlaylistSongs
 	default:
 		return nil
 	}
@@ -393,6 +402,8 @@ func getAlbumDetailFunc(source string) func(string) ([]model.Song, error) {
 		return qianqian.New(c).GetAlbumSongs
 	case "soda":
 		return soda.New(c).GetAlbumSongs
+	case "apple":
+		return apple.New(c).GetAlbumSongs
 	default:
 		return nil
 	}
@@ -441,6 +452,8 @@ func getParsePlaylistFunc(source string) func(string) (*model.Playlist, []model.
 		return soda.New(c).ParsePlaylist
 	case "fivesing":
 		return fivesing.New(c).ParsePlaylist
+	case "apple":
+		return apple.New(c).ParsePlaylist
 	default:
 		return nil
 	}
@@ -467,6 +480,8 @@ func getParseAlbumFunc(source string) func(string) (*model.Playlist, []model.Son
 		return qianqian.New(c).ParseAlbum
 	case "soda":
 		return soda.New(c).ParseAlbum
+	case "apple":
+		return apple.New(c).ParseAlbum
 	default:
 		return nil
 	}
