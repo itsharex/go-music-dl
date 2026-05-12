@@ -61,6 +61,19 @@ func TestPlaylistFactoriesAndSourceList(t *testing.T) {
 	}
 }
 
+func TestUserPlaylistFactoriesAndSourceList(t *testing.T) {
+	supported := []string{"netease", "qq", "kugou", "soda"}
+	for _, source := range supported {
+		if fn := GetUserPlaylistsFunc(source); fn == nil {
+			t.Fatalf("GetUserPlaylistsFunc(%q) returned nil", source)
+		}
+	}
+
+	if got := GetUserPlaylistSourceNames(); !reflect.DeepEqual(got, supported) {
+		t.Fatalf("GetUserPlaylistSourceNames() = %v, want %v", got, supported)
+	}
+}
+
 func TestJooxPlaylistIntegration(t *testing.T) {
 	requireIntegration(t)
 	runPlaylistIntegration(t, playlistIntegrationCase{

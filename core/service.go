@@ -393,13 +393,15 @@ func GetUserPlaylistsFunc(source string) UserPlaylistsFunc {
 		return qq.New(c).GetUserPlaylists
 	case "kugou":
 		return kugou.New(c).GetUserPlaylists
+	case "soda":
+		return soda.New(c).GetUserPlaylists
 	default:
 		return nil
 	}
 }
 
 func GetUserPlaylistSourceNames() []string {
-	return []string{"netease", "qq", "kugou"}
+	return []string{"netease", "qq", "kugou", "soda"}
 }
 
 func GetRecommendSourceNames() []string {
