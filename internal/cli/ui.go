@@ -191,6 +191,8 @@ func getSearchFunc(source string) func(string) ([]model.Song, error) {
 		return joox.New(c).Search
 	case "qianqian":
 		return qianqian.New(c).Search
+	case "apple":
+		return apple.New(c).Search
 	default:
 		return nil
 	}
@@ -221,6 +223,8 @@ func getDownloadFunc(source string) func(*model.Song) (string, error) {
 		return joox.New(c).GetDownloadURL
 	case "qianqian":
 		return qianqian.New(c).GetDownloadURL
+	case "apple":
+		return apple.New(c).GetDownloadURL
 	default:
 		return nil
 	}
@@ -251,6 +255,8 @@ func getLyricFunc(source string) func(*model.Song) (string, error) {
 		return joox.New(c).GetLyrics
 	case "qianqian":
 		return qianqian.New(c).GetLyrics
+	case "apple":
+		return apple.New(c).GetLyrics
 	default:
 		return nil
 	}
@@ -523,6 +529,9 @@ func detectSource(link string) string {
 	}
 	if strings.Contains(link, "jamendo.com") {
 		return "jamendo"
+	}
+	if strings.Contains(link, "music.apple.com") || strings.Contains(link, "itunes.apple.com") {
+		return "apple"
 	}
 	return ""
 }
