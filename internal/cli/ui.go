@@ -21,6 +21,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/guohuiyuan/go-music-dl/core"
+	"github.com/guohuiyuan/music-lib/apple"
 	"github.com/guohuiyuan/music-lib/bilibili"
 	"github.com/guohuiyuan/music-lib/fivesing"
 	"github.com/guohuiyuan/music-lib/jamendo"
@@ -33,16 +34,17 @@ import (
 	"github.com/guohuiyuan/music-lib/qianqian"
 	"github.com/guohuiyuan/music-lib/qq"
 	"github.com/guohuiyuan/music-lib/soda"
-	"github.com/guohuiyuan/music-lib/apple"
 	"github.com/guohuiyuan/music-lib/utils"
 )
 
 // --- 常量与样式 ---
 const (
-	UA_Common          = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-	searchTypeSong     = "song"
-	searchTypePlaylist = "playlist"
-	searchTypeAlbum    = "album"
+	UA_Common                = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+	searchTypeSong           = "song"
+	searchTypePlaylist       = "playlist"
+	searchTypeAlbum          = "album"
+	legacyCLIDefaultPageSize = 50
+	listViewReservedRows     = 10
 )
 
 var (
@@ -569,8 +571,9 @@ type modelState struct {
 	err       error
 	statusMsg string // 底部状态栏消息
 
-	windowWidth int
-	pageSize    int
+	windowWidth  int
+	windowHeight int
+	pageSize     int
 }
 
 // 启动 UI 的入口
@@ -641,6 +644,7 @@ func (m modelState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.windowWidth = msg.Width
+		m.windowHeight = msg.Height
 		m.progress.Width = msg.Width - 10
 		if m.progress.Width > 50 {
 			m.progress.Width = 50
@@ -1993,7 +1997,24 @@ func (m modelState) currentPageSize() int {
 	if m.pageSize <= 0 {
 		return core.DefaultCLIPageSize
 	}
-	return m.pageSize
+	pageSize := m.pageSize
+	if pageSize == legacyCLIDefaultPageSize {
+		if maxRows := m.maxRowsForListView(); maxRows > 0 && maxRows < pageSize {
+			pageSize = maxRows
+		}
+	}
+	return pageSize
+}
+
+func (m modelState) maxRowsForListView() int {
+	if m.windowHeight <= 0 {
+		return 0
+	}
+	available := m.windowHeight - listViewReservedRows
+	if available < 1 {
+		return 1
+	}
+	return available
 }
 
 func (m modelState) pageRangeForCursor(total int) (int, int) {
