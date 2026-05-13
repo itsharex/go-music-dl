@@ -1346,14 +1346,17 @@ function showSodaSMSLogin(result) {
     if (sendBtn) sendBtn.disabled = false;
     if (validateBtn) validateBtn.disabled = false;
 
+    const mobile = String(extra.mobile || '').trim();
     if (qrLoginState.sms.codeSent) {
-        const mobile = String(extra.mobile || '').trim();
         setQRLoginStatus(mobile ? `验证码已发送至 ${mobile}，请输入后确认` : '验证码已发送，请输入后确认', 'warning');
         if (input) input.focus();
-    } else {
-        const mobile = String(extra.mobile || '').trim();
-        setQRLoginStatus(mobile ? `扫码成功，请发送 ${mobile} 的验证码` : '扫码成功，请发送验证码并输入', 'warning');
+        return;
     }
+
+    // Match official Soda PC client: auto-send the SMS code as soon as MFA
+    // is requested so the user does not have to click an extra button.
+    setQRLoginStatus(mobile ? `扫码成功，正在向 ${mobile} 发送验证码...` : '扫码成功，正在发送验证码...', 'warning');
+    sendSodaSMSCode();
 }
 
 function sodaSMSActionKey(action, code = '') {
