@@ -330,6 +330,8 @@ func GetPlaylistCategoriesFunc(source string) PlaylistCategoriesFunc {
 		return joox.New(c).GetPlaylistCategories
 	case "qianqian":
 		return qianqian.New(c).GetPlaylistCategories
+	case "apple":
+		return apple.New(c).GetPlaylistCategories
 	default:
 		return nil
 	}
@@ -352,6 +354,8 @@ func GetCategoryPlaylistsFunc(source string) CategoryPlaylistsFunc {
 		return joox.New(c).GetCategoryPlaylists
 	case "qianqian":
 		return qianqian.New(c).GetCategoryPlaylists
+	case "apple":
+		return apple.New(c).GetCategoryPlaylists
 	default:
 		return nil
 	}
@@ -1008,7 +1012,7 @@ func GetAlbumSourceNames() []string {
 }
 
 func GetPlaylistCategorySourceNames() []string {
-	return []string{"netease", "qq", "kugou", "kuwo", "migu", "qianqian", "joox"}
+	return []string{"netease", "qq", "kugou", "kuwo", "migu", "qianqian", "joox", "apple"}
 }
 
 func GetDefaultSourceNames() []string {
