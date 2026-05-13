@@ -1,7 +1,5 @@
 module github.com/guohuiyuan/go-music-dl
 
-replace github.com/guohuiyuan/music-lib => ../music-lib
-
 go 1.25.1
 
 require (
