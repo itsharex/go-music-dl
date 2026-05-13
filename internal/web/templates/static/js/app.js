@@ -1289,9 +1289,8 @@ function renderQRLoginSession(session) {
     const image = document.getElementById('qrLoginImage');
     const imageURL = String(session.image_url || session.imageURL || '').trim();
     const loginURL = String(session.url || session.URL || '').trim();
-    const preferGeneratedQR = String(session.source || qrLoginState.source || '') === 'soda' && loginURL;
 
-    if (imageURL && image && !preferGeneratedQR) {
+    if (imageURL && image) {
         image.src = imageURL;
         image.style.display = 'block';
         if (canvas) canvas.style.display = 'none';
