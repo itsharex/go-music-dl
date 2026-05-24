@@ -59,6 +59,20 @@ if not defined JAVA_VERSION (
 	exit /b 1
 )
 
+set "DEFAULT_VERSION=1.0.0.1"
+set "VERSION=%DEFAULT_VERSION%"
+set "COMMIT_COUNT="
+for /f "usebackq delims=" %%i in (`git rev-list --count HEAD 2^>nul`) do (
+    set "COMMIT_COUNT=%%i"
+)
+
+if "%COMMIT_COUNT%"=="" (
+    echo WARN: failed to get git commit count, fallback version: %DEFAULT_VERSION%
+) else (
+    set "VERSION=1.0.0.%COMMIT_COUNT%"
+)
+
+echo android version: %VERSION%
 echo Using Java version %JAVA_VERSION%
 
 echo JAVA_HOME = %JAVA_HOME%
@@ -85,7 +99,7 @@ gogio -target android ^
  -o ../music-dl.apk ^
  -appid com.musicdl.app.util ^
  -name MusicDL ^
- -version 1.0.0.1 ^
+ -version %VERSION% ^
  -icon ../winres/icon_256x256.png ^
  -slice ^
  github.com/guohuiyuan/go-music-dl/desktop_app

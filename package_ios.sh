@@ -38,6 +38,18 @@ else
     echo "arc 目录已存在，跳过补齐。"
 fi
 
+DEFAULT_VERSION="1.0.0.1"
+VERSION="$DEFAULT_VERSION"
+
+COMMIT_COUNT="$(git rev-list --count HEAD 2>/dev/null)"
+
+if [ -z "$COMMIT_COUNT" ]; then
+  echo "WARN: failed to get git commit count, fallback version: $DEFAULT_VERSION"
+else
+  VERSION="1.0.0.$COMMIT_COUNT"
+fi
+
+echo "App Version: $VERSION"
 echo "正在下载并安装 gogio..."
 go install github.com/lianhong2758/gio-cmd/gogio@latest
 
@@ -53,7 +65,7 @@ echo "--- 开始编译 iOS App ---"
 gogio -target ios \
  -o ../music-dl.app \
  -name MusicDL \
- -version 1.0.0.1 \
+ -version "$VERSION" \
  -icon ../winres/icon_256x256.png \
  github.com/guohuiyuan/go-music-dl/desktop_app
 
