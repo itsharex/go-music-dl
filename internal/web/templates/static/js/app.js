@@ -33,7 +33,7 @@ function isLocalMusicSourceValue(source) {
 }
 
 let webSettings = {
-    embedDownload: false,
+    embedDownload: true,
     downloadToLocal: true,
     downloadDir: 'data/downloads',
     downloadFilenameTemplate: '{name} - {artist}',
@@ -52,7 +52,7 @@ let webSettings = {
 
 function normalizeWebSettings(raw) {
     const next = {
-        embedDownload: false,
+        embedDownload: true,
         downloadToLocal: true,
         downloadDir: 'data/downloads',
         downloadFilenameTemplate: '{name} - {artist}',

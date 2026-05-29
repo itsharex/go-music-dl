@@ -3,8 +3,6 @@ package web
 import (
 	"encoding/base64"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -107,29 +105,14 @@ func RegisterVideogenRoutes(api *gin.RouterGroup, videoDir string) {
 			}
 			proxyAudioUrl = ""
 		} else {
-			fn := core.GetDownloadFunc(source)
-			if fn == nil {
-				c.JSON(500, gin.H{"error": "Source not supported"})
-				return
-			}
-			audioUrl, err := fn(&model.Song{ID: id, Source: source})
+			settings := core.GetWebSettings()
+			tempSong := &model.Song{ID: id, Source: source, Name: "render", Artist: "render"}
+			result, err := core.SaveSongToFileWithTemplate(tempSong, tempDir, false, false, settings.DownloadFilenameTemplate)
 			if err != nil {
-				c.JSON(500, gin.H{"error": "Audio download failed"})
+				c.JSON(500, gin.H{"error": "Audio download failed: " + err.Error()})
 				return
 			}
-
-			reqHttp, _ := core.BuildSourceRequest("GET", audioUrl, source, "")
-			client := &http.Client{}
-			resp, err := client.Do(reqHttp)
-			if err != nil {
-				c.JSON(500, gin.H{"error": "Save audio failed"})
-				return
-			}
-			defer resp.Body.Close()
-			out, _ := os.Create(audioPath)
-			io.Copy(out, resp.Body)
-			out.Close()
-
+			audioPath = result.SavedPath
 			proxyAudioUrl = fmt.Sprintf("%s/download?id=%s&source=%s", RoutePrefix, url.QueryEscape(id), source)
 		}
 

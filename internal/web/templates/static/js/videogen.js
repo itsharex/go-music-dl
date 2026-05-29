@@ -10,12 +10,12 @@
             if (n <= 1) return data;
             const half = n / 2, even = new Float32Array(half), odd = new Float32Array(half);
             for (let i = 0; i < half; i++) { even[i] = data[2 * i]; odd[i] = data[2 * i + 1]; }
-            const q = this.fft(even), r = this.fft(odd), output = new Float32Array(n); 
+            const q = this.fft(even), r = this.fft(odd), output = new Float32Array(n);
             for (let k = 0; k < half; k++) { const t = r[k]; output[k] = q[k] + t; output[k + half] = q[k] - t; }
             return output;
-            ctx.lineJoin = "round";
-            // 加粗描边，实现图1的厚实感
-            ctx.lineWidth = Math.max(3, lineHeight * 0.12);
+        },
+        getFrequencyData: function(pcmData, fftSize, smoothing) {
+            const half = fftSize / 2;
             if (!this.windowed || this.windowed.length !== fftSize) {
                 this.windowed = new Float32Array(fftSize);
                 this.mags = new Uint8Array(half);
@@ -23,17 +23,17 @@
             }
             for(let i=0; i<fftSize; i++) {
                 const val = (i < pcmData.length) ? pcmData[i] : 0;
-                this.windowed[i] = val * (0.5 * (1 - Math.cos(2 * Math.PI * i / (fftSize - 1)))); 
+                this.windowed[i] = val * (0.5 * (1 - Math.cos(2 * Math.PI * i / (fftSize - 1))));
             }
             const rawFFT = this.fft(this.windowed);
             for(let i=0; i<half; i++) {
                 let mag = Math.abs(rawFFT[i]) / fftSize;
-                mag = mag * 2.0; 
+                mag = mag * 2.0;
                 mag = smoothing * this.previousMags[i] + (1 - smoothing) * mag;
                 this.previousMags[i] = mag;
                 let db = 20 * Math.log10(mag + 1e-6);
                 const minDb = -100, maxDb = -10;
-                let val = (db - minDb) * (255 / (maxDb - minDb)); 
+                let val = (db - minDb) * (255 / (maxDb - minDb));
                 if(val < 0) val = 0; if(val > 255) val = 255;
                 this.mags[i] = val;
             }
@@ -504,7 +504,7 @@
 
                     const blocks = [];
                     let currentBlockIndex = -1;
-                    for (let offset = -1; offset <= 1; offset++) {
+                    for (let offset = -2; offset <= 2; offset++) {
                         const idx = activeIdx + offset;
                         if (idx < 0 || idx >= lyricGroups.length) continue;
 
@@ -513,7 +513,7 @@
                         if (!orig) continue;
 
                         const isCurrent = offset === 0;
-                        const blockAlpha = isCurrent ? 1 : 0.4;
+                        const blockAlpha = 1;
                         const origFont = isCurrent ? "bold 40px sans-serif" : "700 28px sans-serif";
                         const origLineHeight = isCurrent ? 52 : 38;
                         const subGap = isCurrent ? 10 : 8;
@@ -560,9 +560,9 @@
 
                     blocks.forEach((block) => {
                         ctx.shadowColor = "rgba(0,0,0,0.9)";
-                        ctx.shadowBlur = block.isCurrent ? 8 : 4;
-                        ctx.shadowOffsetX = block.isCurrent ? 2 : 1;
-                        ctx.shadowOffsetY = block.isCurrent ? 2 : 1;
+                        ctx.shadowBlur = block.isCurrent ? 8 : 6;
+                        ctx.shadowOffsetX = 2;
+                        ctx.shadowOffsetY = 2;
 
                         let currentY = block.topY;
 
@@ -572,7 +572,7 @@
                             currentY,
                             block.origFont,
                             timeMs,
-                            block.isCurrent ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.7)",
+                            block.isCurrent ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.85)",
                             block.alpha,
                             block.isCurrent
                         );
@@ -585,7 +585,7 @@
                                 currentY,
                                 block.romaFont,
                                 timeMs,
-                                block.isCurrent ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.5)",
+                                block.isCurrent ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.7)",
                                 block.alpha,
                                 block.isCurrent
                             );
@@ -599,7 +599,7 @@
                                 currentY,
                                 block.transFont,
                                 timeMs,
-                                block.isCurrent ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)",
+                                block.isCurrent ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.8)",
                                 block.alpha,
                                 block.isCurrent
                             );

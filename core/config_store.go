@@ -159,8 +159,8 @@ func migrateLegacyCookies() error {
 
 func defaultWebSettings() WebSettings {
 	return normalizeWebSettings(WebSettings{
-		EmbedDownload:            false,
-		DownloadToLocal:          false,
+		EmbedDownload:            true,
+		DownloadToLocal:          true,
 		DownloadDir:              DefaultWebDownloadDir,
 		DownloadFilenameTemplate: DefaultDownloadFilenameTemplate,
 		DisableFloatingLyrics:    false,
